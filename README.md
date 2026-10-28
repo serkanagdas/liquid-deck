@@ -146,7 +146,7 @@ Wayland compositors may block synthetic input. `wtype` works on wlroots-based co
 ## Build
 
 ```bash
-git clone https://github.com/your-org/liquid-deck.git
+git clone https://github.com/serkanagdas/liquid-deck.git
 cd liquid-deck
 
 # development build
