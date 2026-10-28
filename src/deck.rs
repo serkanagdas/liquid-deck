@@ -221,6 +221,7 @@ impl DeckState {
         format!("{board}/{button}")
     }
 
+    #[cfg(test)]
     pub fn is_active(&self, board: &str, button: &str) -> bool {
         self.toggles
             .get(&Self::toggle_key(board, button))

@@ -7,7 +7,8 @@
 Liquid Deck runs on the machine you want to monitor, serves an embedded dashboard over HTTP and WebSocket, and turns a phone or tablet — including a Galaxy Note 4 — into an always-on hardware panel and macro deck. There is no Electron, no Node runtime, no external font or asset CDN, and no database. The release binary is about **1.4 MB** and idles at roughly **3 MB RSS**.
 
 - Live CPU, RAM, temperature, network throughput, TCP ping, load average and uptime.
-- A touch macro deck for Discord mute/deafen, media keys, volume, terminal, game mode and custom scripts.
+- A configurable, multi-board touch deck with a full in-browser editor, nested boards, persistent toggle states, URL launchers, OBS WebSocket v5, a soundboard and a system audio mixer.
+- Discord mute/deafen, media keys, volume, terminal, game mode and custom scripts.
 - AMOLED-black, blurred-glass UI with specular edges, squircle cards and a 1440 × 2560-friendly layout.
 - WebSocket telemetry with automatic reconnect and an HTTP polling fallback.
 - Optional token authentication, constant-time comparison, a 25 action/second rate limit and a strict action allow-list.
@@ -48,17 +49,23 @@ Liquid Deck runs on the machine you want to monitor, serves an embedded dashboar
 │                                                                      │
 │  axum router                                                         │
 │   ├── /                embedded static UI (rust-embed)               │
-│   ├── /ws              hello / metrics / pong / action_result        │
+│   ├── /ws              hello / metrics / config / state / actions    │
 │   ├── /api/health      public liveness + client count                │
 │   ├── /api/auth        token check                                   │
 │   ├── /api/metrics     latest sample (polling fallback)              │
 │   ├── /api/actions     action catalog                                │
-│   └── /api/action      authenticated action execution                │
+│   ├── /api/action      authenticated action execution                │
+│   ├── /api/config      board layout read / write / reset             │
+│   ├── /api/state       toggle + active-board persistence             │
+│   ├── /api/audio       mixer snapshot and level changes              │
+│   ├── /api/sounds      sound library and clip streaming              │
+│   └── /api/obs/test    obs-websocket connection check                │
 │                                                                      │
 │  metrics sampler ── sysinfo ── CPU, RAM, components, networks        │
 │  ping task ──────── TCP connect to LIQUID_DECK_PING_TARGET           │
 │  action executor ── xdotool / wtype / playerctl / pactl / PowerShell  │
-│                     / osascript / launch commands / scripts          │
+│                     / osascript / launch commands / scripts / OBS    │
+│  deck store ─────── boards.json + state.json (atomic writes)         │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -69,9 +76,13 @@ Liquid Deck runs on the machine you want to monitor, serves an embedded dashboar
 | `src/main.rs` | CLI/env configuration, axum routes, WebSocket loop, token auth, rate limiting, security headers, static asset serving, graceful shutdown. |
 | `src/metrics.rs` | Adaptive `sysinfo` sampler, 60-point history ring, network rate calculation, hottest thermal sensor, TCP ping task. |
 | `src/actions.rs` | Action enum, validation, platform backends, script confinement, process timeouts, unit tests. |
-| `web/index.html` | Dashboard markup, SVG icon sprite, accessible controls. |
-| `web/style.css` | Liquid Glass design system, AMOLED palette, ambient glow, responsive layout. |
-| `web/app.js` | WebSocket client, reconnect/backoff, polling fallback, gauges, SVG flow chart, action deck, toasts, lock screen. |
+| `src/deck.rs` | `boards.json` model, defaults, normalisation/validation, atomic persistence, `state.json` toggle store. |
+| `src/audio.rs` | Audio output/app mixer via `pactl` on Linux, `SwitchAudioSource` + AppleScript on macOS. |
+| `src/obs.rs` | Minimal obs-websocket v5 client: hello, SHA-256 challenge auth, request/response, allow-listed operations. |
+| `src/sounds.rs` | Sound library discovery, path confinement, built-in clips and platform playback. |
+| `web/index.html` | Dashboard markup, board switcher, editor/mixer sheets, SVG icon sprite, accessible controls. |
+| `web/style.css` | Liquid Glass design system, AMOLED palette, ambient glow, board/editor/mixer sheets, responsive layout. |
+| `web/app.js` | WebSocket client, reconnect/backoff, polling fallback, gauges, configurable boards, action deck, editor, mixer, toasts, lock screen. |
 | `web/icon.svg`, `web/icon-*.png`, `web/noise.png` | Embedded icons and grain texture. |
 | `web/manifest.webmanifest` | Installable PWA metadata. |
 | `integrations/note4-panel.sh` | Optional ADB helper for waking/sleeping a Galaxy Note 4 panel. |
@@ -88,9 +99,11 @@ Liquid Deck runs on the machine you want to monitor, serves an embedded dashboar
 
 ### Frontend flow
 
-- On load, the UI reads `/api/health`, restores a token from `localStorage` or `?token=`, and verifies it with `/api/auth` when authentication is enabled.
-- It opens `ws://host/ws` (or `wss://` on HTTPS). The first message is `hello`, containing the server version, host, OS, action catalog and the current history.
+- On load, the UI reads `/api/health`, restores a token from `localStorage` or `?token=`, and verifies it with `/api/auth` when authentication is enabled. It also fetches `/api/config` so the deck is usable before the WebSocket connects.
+- It opens `ws://host/ws` (or `wss://` on HTTPS). The first message is `hello`, containing the server version, host, OS, action catalog, current history, the full deck configuration, toggle state and sound library.
 - Every `metrics` message updates the CPU/RAM rings, network rates, SVG chart, ping pill, clock, load and uptime.
+- Board tabs switch pages without reloading. Long-press a key (or use the sliders button) to open the editor; edits are staged in a draft and saved with `PUT /api/config`.
+- Toggle buttons persist on/off state in `state.json` through `POST /api/state`. Configuration and state changes are broadcast to every connected client.
 - If the WebSocket closes, the client reconnects with exponential backoff (450 ms → 10 s, plus jitter) and polls `/api/metrics` every 2 seconds in the meantime.
 - Action buttons send an `action` message with a `request_id` and wait for `action_result`; if the WebSocket is unavailable, they fall back to `POST /api/action`.
 - A 401 locks the UI behind a token prompt. The token is stored under the `liquid-deck.token` key.
@@ -123,8 +136,11 @@ Optional runtime tools, depending on which actions you use:
 | Media keys / MPRIS | `playerctl` |
 | Volume (PipeWire/PulseAudio) | `pactl` (`pulseaudio-utils`) or `wpctl` (`wireplumber`) |
 | Volume (ALSA fallback) | `amixer` (`alsa-utils`) |
+| Audio mixer | `pactl` (`pulseaudio-utils`, PipeWire's PulseAudio shim also provides it) |
+| Soundboard playback | one of `paplay`, `pw-play`, `ffplay`, `mpv`, `aplay` |
 | Open browser/files | `xdg-open` (`xdg-utils`) |
 | Terminal action | any of `x-terminal-emulator`, `gnome-terminal`, `konsole`, `xfce4-terminal`, `kitty`, `alacritty`, `foot`, `xterm` |
+| OBS WebSocket v5 | OBS Studio 28+ with **Tools → WebSocket Server Settings** enabled |
 | Temperature sensors | kernel `hwmon` drivers; `lm-sensors` helps expose them |
 
 Wayland compositors may block synthetic input. `wtype` works on wlroots-based compositors; GNOME/KDE may require additional permissions or extensions.
@@ -140,6 +156,8 @@ Wayland compositors may block synthetic input. `wtype` works on wlroots-based co
 - Xcode Command Line Tools: `xcode-select --install`.
 - Grant **Accessibility** permission to the terminal app (or to the `liquid-deck` binary) in **System Settings → Privacy & Security → Accessibility**, otherwise `osascript` key events are ignored.
 - Media actions try Apple Music and Spotify via AppleScript.
+- The audio mixer uses `SwitchAudioSource` for output switching (`brew install switchaudio-osx`) and AppleScript for level/mute changes.
+- Soundboard clips play through `afplay`.
 
 ---
 
@@ -247,7 +265,13 @@ xattr -d com.apple.quarantine ./liquid-deck
 
 # custom port, scripts enabled
 ./target/release/liquid-deck --lan --port 9000 --token my-secret --scripts ./scripts
+
+# custom board layout + soundboard directory
+./target/release/liquid-deck --lan --token my-secret \
+  --config ./boards.json --sounds ~/Music/clips
 ```
+
+The default data directory is `$XDG_CONFIG_HOME/liquid-deck` (usually `~/.config/liquid-deck`) on Linux/macOS and `%APPDATA%\liquid-deck` on Windows. It contains `boards.json`, `state.json` and a `sounds/` folder seeded with three built-in clips on first run. Use `--data <DIR>` to move all three, or `--no-sounds` to disable the soundboard.
 
 Open `http://127.0.0.1:8787/` on the host, or `http://<host-lan-ip>:8787/` from the tablet.
 
@@ -264,7 +288,7 @@ On macOS/Linux with a shell:
 LIQUID_DECK_TOKEN=my-secret ./liquid-deck --lan
 ```
 
-The startup banner prints the local URL, whether authentication is enabled, whether scripts are enabled, and the sampling/ping configuration.
+The startup banner prints the local URL, whether authentication is enabled, the scripts and sounds directories, the board layout path, and the sampling/ping configuration.
 
 ### Token in the URL
 
@@ -290,6 +314,10 @@ Command-line flags override environment variables, which override defaults.
 | `--local` | — | on | Shortcut for `--bind 127.0.0.1`. |
 | `--token <TOKEN>` | `LIQUID_DECK_TOKEN` | none | Require a token for metrics, WebSocket and actions. Empty means disabled. |
 | `--scripts <DIR>` | `LIQUID_DECK_SCRIPTS` | disabled | Enable `script` actions from this directory. |
+| `--config <FILE>` | `LIQUID_DECK_CONFIG` | `<data>/boards.json` | Board layout file. |
+| `--data <DIR>` | `LIQUID_DECK_DATA` | platform config dir | Data directory for config, state and sounds. |
+| `--sounds <DIR>` | `LIQUID_DECK_SOUNDS` | `<data>/sounds` | Soundboard directory. |
+| `--no-sounds` | — | off | Disable the soundboard. |
 | `--ping <HOST:PORT>` | `LIQUID_DECK_PING_TARGET` | `1.1.1.1:443` | TCP ping target. A bare host gets `:443`. |
 | — | `LIQUID_DECK_INTERVAL_MS` | `1000` | Active sample interval, clamped to 250–10000 ms. |
 | — | `LIQUID_DECK_IDLE_MS` | `5000` | Idle sample interval, clamped to 1000–60000 ms. |
@@ -305,6 +333,59 @@ Notes:
 - `--bind 192.168.1.50` uses `--port` / `LIQUID_DECK_PORT`.
 - `--lan` exposes the server to every interface. Use a token on any network you do not fully trust.
 - The server has **no TLS**. Put it behind a reverse proxy if it leaves a trusted LAN.
+
+### Boards, editor and state
+
+The deck is stored in `<data>/boards.json`. On first run the server writes the built-in **Gaming**, **Workstation**, **Media** and **Dev** boards. Limits: 16 boards, 32 buttons per board, 2–8 columns, button width 1–4 columns.
+
+```json
+{
+  "version": 1,
+  "settings": {
+    "default_board": "gaming",
+    "haptics": true,
+    "show_subtitles": true,
+    "obs": { "url": "ws://127.0.0.1:4455", "password": "" }
+  },
+  "boards": [
+    {
+      "id": "gaming",
+      "name": "Gaming",
+      "icon": "gamepad",
+      "accent": "#ff9f0a",
+      "columns": 4,
+      "buttons": [
+        {
+          "id": "mic",
+          "label": "Mic Mute",
+          "subtitle": "Discord · Ctrl ⇧ M",
+          "icon": "mic",
+          "active_label": "Muted",
+          "active_icon": "mic-off",
+          "color": "orange",
+          "action": "discord_mute",
+          "value": "",
+          "arg": "",
+          "amount": 5,
+          "toggle": true,
+          "span": 1
+        }
+      ]
+    }
+  ]
+}
+```
+
+- Open the editor with the sliders button beside the board tabs, or long-press any key. It has **Boards**, **Buttons**, **Integrations** and **JSON** tabs. Changes are staged and saved with `PUT /api/config`.
+- `color` / `accent` accept a preset (`blue`, `cyan`, `violet`, `pink`, `green`, `orange`, `yellow`, `red`, `slate`) or `#rrggbb`.
+- `icon` accepts a sprite name (for example `mic`, `record`, `speaker`, `globe`) or a short text/emoji glyph.
+- A button with `"action": "board"` and a board id in `value` opens a nested board. The UI shows a **Back** pill until you tap a tab.
+- `"action": "panel"` with `value` set to `editor`, `settings` or `audio` opens a sheet without leaving the deck.
+- `"toggle": true` keeps an on/off state. Toggle state lives in `<data>/state.json` (keyed as `board_id/button_id`) and survives reloads and layout saves.
+- Unknown actions, broken board links, invalid URLs, unsafe sound names and non-`ws://` OBS URLs are rejected with a useful error. Labels, colours and widths are normalised instead of failing.
+- `POST /api/config/reset` restores the built-in deck and clears all toggle state.
+
+Writes are atomic: the server writes a temporary file, sets mode `0600` on Unix and renames it into place.
 
 ### Launch targets
 
@@ -342,8 +423,10 @@ Hooks run through the platform shell with an 8-second timeout. They are configur
 `GET /api/actions` and the WebSocket `hello` message expose this catalog:
 
 ```json
-["key","media","volume","mute","launch","script","discord_mute","discord_deafen","game_mode","terminal"]
+["key","media","volume","mute","launch","script","discord_mute","discord_deafen","game_mode","terminal","url","sound","obs","audio"]
 ```
+
+`board`, `panel` and `none` are frontend-only configuration values: they never reach the action executor.
 
 | UI key | Request body |
 | --- | --- |
@@ -355,6 +438,11 @@ Hooks run through the platform shell with an 8-second timeout. They are configur
 | Volume Up | `{"action":"volume","direction":"up","step":5}` |
 | Terminal | `{"action":"terminal"}` |
 | Game Mode | `{"action":"game_mode","enabled":true}` |
+| Open URL | `{"action":"url","url":"https://example.com"}` |
+| Sound clip | `{"action":"sound","name":"click.wav"}` |
+| OBS record | `{"action":"obs","op":"record_toggle","target":""}` |
+| OBS scene | `{"action":"obs","op":"scene","target":"Main"}` |
+| Switch output | `{"action":"audio","op":"output","id":"alsa_output.…"}` |
 
 ### `key`
 
@@ -430,6 +518,69 @@ Runs `LIQUID_DECK_GAME_MODE_ON` or `LIQUID_DECK_GAME_MODE_OFF` if configured. Wi
 
 Convenience wrappers for Discord’s default shortcuts `Ctrl+Shift+M` and `Ctrl+Shift+D`. They use the same platform key backend as `key`.
 
+### `url`
+
+```json
+{"action":"url","url":"https://discord.com/app"}
+```
+
+Only `http://` and `https://` URLs up to 2048 characters are accepted. Whitespace, control characters and every other scheme (`file:`, `javascript:`…) are rejected. The URL opens in the host’s default browser with `xdg-open` (Linux), `open` (macOS) or `cmd /C start` (Windows).
+
+### `sound`
+
+```json
+{"action":"sound","name":"click.wav"}
+```
+
+- Play clips from the soundboard directory (`--sounds <DIR>` / `LIQUID_DECK_SOUNDS`, default `<data>/sounds`).
+- Supported extensions: `wav`, `mp3`, `ogg`, `oga`, `flac`, `m4a`, `aac`, `opus`, `aiff`, `aif`; maximum 32 MB.
+- Names may not contain `/`, `\` or `..`, and the resolved path must stay inside the soundboard directory.
+- First run seeds `click.wav`, `chime.wav` and `alert.wav`.
+- Linux tries `paplay`, `pw-play`, `ffplay`, `mpv`, then `aplay`. macOS uses `afplay`; Windows uses PowerShell’s `MediaPlayer`.
+
+`GET /api/sound?name=…` streams a clip for browser preview; it is authenticated like every other API route.
+
+### `obs`
+
+```json
+{"action":"obs","op":"scene","target":"Main"}
+```
+
+Each action opens one short-lived obs-websocket v5 session, authenticates with the configured password, sends one request and closes. Only `ws://` is supported directly; for `wss://` put a TLS proxy in front of OBS.
+
+Allowed operations: `scene`, `record_start`, `record_stop`, `record_toggle`, `stream_start`, `stream_stop`, `stream_toggle`, `mute_toggle`, `mute_on`, `mute_off`, `replay_start`, `replay_stop`, `replay_save`, `scene_collection`, `test`. `target` is the scene name or input/source name where relevant.
+
+Configure the server URL and password in **Customize → Integrations**, then use **Test connection**. The password is stored in `boards.json` with the same `0600` permissions as the rest of the file and is never logged.
+
+### `audio`
+
+```json
+{"action":"audio","op":"volume","id":"alsa_output.pci-0000_00_1f.3.analog-stereo","value":45}
+```
+
+Allowed operations:
+
+| `op` | `id` | `value` |
+| --- | --- | --- |
+| `output` | sink name | ignored |
+| `volume` | sink name, or empty for default | 0–100 |
+| `mute` | sink name, or empty for default | ignored |
+| `app_volume` | numeric sink-input index | 0–100 |
+| `app_mute` | numeric sink-input index | ignored |
+
+Linux uses `pactl`. macOS uses `SwitchAudioSource` for output switching and AppleScript for volume/mute. Windows reports that the mixer is unsupported. The mixer sheet beside the board tabs lists device and application ids that can be pasted into a button.
+
+### `board` / `panel`
+
+These are handled entirely by `app.js` and are never sent to the server:
+
+```json
+{"action":"board","value":"media"}
+{"action":"panel","value":"audio"}
+```
+
+`board` navigates to another board and remembers the previous one for the **Back** pill. `panel` accepts `editor`, `settings` or `audio`.
+
 ### Action response
 
 ```json
@@ -468,7 +619,16 @@ All JSON endpoints return `application/json`. Static files are served from the e
 | `GET` | `/api/metrics` | token | Latest metrics sample, with `"type":"metrics"`. |
 | `GET` | `/api/actions` | public | Action catalog. |
 | `POST` | `/api/action` | token | Execute one action. |
-| `GET` | `/ws` | token | WebSocket telemetry and action channel. |
+| `GET` | `/api/config` | token | Deck layout, toggle state and sound library. |
+| `PUT` | `/api/config` | token | Validate, normalise, persist and broadcast a new layout. |
+| `POST` | `/api/config/reset` | token | Restore the built-in deck and clear toggle state. |
+| `POST` | `/api/state` | token | Set one toggle, or the active board. |
+| `GET` | `/api/audio` | token | Mixer snapshot (outputs + applications). |
+| `POST` | `/api/audio` | token | Change output, volume or mute. |
+| `GET` | `/api/sounds` | token | Soundboard library. |
+| `GET` | `/api/sound?name=…` | token | Stream one clip. |
+| `POST` | `/api/obs/test` | token | Test an obs-websocket connection. |
+| `GET` | `/ws` | token | WebSocket telemetry, deck events and action channel. |
 
 Authentication accepts either:
 
@@ -538,6 +698,58 @@ curl -sS http://127.0.0.1:8787/api/action \
 
 Rate limit: 25 actions per second across HTTP and WebSocket. Excess requests receive HTTP 429 or an `action_result` with `ok: false`.
 
+### Deck configuration API
+
+```bash
+# read the layout, toggle state and sound library
+curl -sS http://127.0.0.1:8787/api/config
+
+# save an edited layout from a file
+curl -sS -X PUT http://127.0.0.1:8787/api/config \
+  -H 'content-type: application/json' \
+  -H 'x-liquid-token: my-secret' \
+  --data-binary @boards.json
+
+# reset to the built-in deck
+curl -sS -X POST http://127.0.0.1:8787/api/config/reset \
+  -H 'x-liquid-token: my-secret'
+```
+
+`PUT` returns `200` with the normalised config, the pruned state and the sound list, or `400` with `{"ok":false,"message":"…"}` when validation fails. The server rejects structural problems (unknown action, missing board target, invalid URL) and clamps cosmetic values (labels, colours, columns, spans). A successful save updates the executor’s OBS credentials and broadcasts `{"type":"config",…}` to every client.
+
+Toggle and active-board state:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8787/api/state \
+  -H 'content-type: application/json' \
+  -d '{"board":"gaming","button":"mic","active":true}'
+
+curl -sS -X POST http://127.0.0.1:8787/api/state \
+  -H 'content-type: application/json' \
+  -d '{"active_board":"media"}'
+```
+
+State is keyed per board, so the same button id on two boards keeps independent on/off values. Saving a new layout prunes state for deleted boards and buttons.
+
+### Audio and sounds API
+
+```bash
+curl -sS http://127.0.0.1:8787/api/audio
+
+curl -sS -X POST http://127.0.0.1:8787/api/audio \
+  -H 'content-type: application/json' \
+  -d '{"op":"volume","id":"alsa_output.…","value":45}'
+
+curl -sS http://127.0.0.1:8787/api/sounds
+curl -sS 'http://127.0.0.1:8787/api/sound?name=click.wav' --output click.wav
+```
+
+`GET /api/audio` returns `{supported, backend, devices, apps, message}`. `devices` contains `{id, description, volume, muted, is_default}`; `apps` contains `{id, app, title, volume, muted}`. When `pactl` is unavailable on Linux, `supported` is `false` and `message` explains what to install.
+
+`POST /api/audio` accepts `op` = `output`, `volume`, `mute`, `app_volume` or `app_mute`, plus `id` and an optional `value` (0–100).
+
+`POST /api/obs/test` accepts `{ "url": "ws://127.0.0.1:4455", "password": "…" }` and returns `{ok, message}` without saving the settings.
+
 ### WebSocket protocol
 
 Connect to `/ws` (or `/wss` behind TLS). The server sends `hello` immediately:
@@ -553,7 +765,11 @@ Connect to `/ws` (or `/wss` behind TLS). The server sends `hello` immediately:
   "metrics": {"ts": 1793158989000, "cpu": 8.4},
   "actions": ["key", "media", "volume"],
   "auth_required": true,
-  "scripts": false
+  "scripts": false,
+  "sounds_enabled": true,
+  "sounds": [{"name": "click.wav", "size": 3130}],
+  "config": {"version": 1, "settings": {}, "boards": []},
+  "state": {"toggles": {"gaming/mic": true}, "active_board": "gaming", "updated_at": 1793158989}
 }
 ```
 
@@ -562,6 +778,8 @@ Then:
 | Direction | Message |
 | --- | --- |
 | server → client | `{"type":"metrics","ts":…,"cpu":…,…}` every active sample. |
+| server → client | `{"type":"config","config":{…},"state":{…}}` when any client saves or resets the layout. |
+| server → client | `{"type":"deck_state","state":{…}}` when a toggle or active board changes. |
 | client → server | `{"type":"ping","t":1793158989000}`. |
 | server → client | `{"type":"pong","t":1793158989000}`. |
 | client → server | `{"type":"action","request_id":"abc","action":"volume","direction":"up","step":5}`. |
@@ -858,7 +1076,10 @@ deck.example.ts.net {
 Liquid Deck can type keys, change volume, launch programs and run configured scripts. Treat it as a remote-control service.
 
 - **Default to localhost.** The default bind is `127.0.0.1:8787`. Use `--lan` only when you need the tablet to reach it.
-- **Use a token on any LAN.** `--token` / `LIQUID_DECK_TOKEN` protects `/api/metrics`, `/api/auth`, `/api/action` and `/ws`. Static UI files and `/api/health` remain public so the lock screen can load.
+- **Use a token on any LAN.** `--token` / `LIQUID_DECK_TOKEN` protects metrics, actions, the deck configuration/state API, audio, sounds, OBS tests and `/ws`. Static UI files and `/api/health` remain public so the lock screen can load.
+- **Deck editing is remote code configuration.** Anyone with the token can define URL launchers, scripts, sound names and OBS operations. Treat the token as admin access, not as a viewer password.
+- **Sound paths are confined.** Sound names reject separators and `..`, and the canonical path must stay inside the soundboard directory. Only audio extensions are listed or played.
+- **OBS credentials stay local.** The password is stored in `boards.json` (mode `0600` on Unix) and sent only to the configured `ws://` endpoint.
 - **Tokens are compared in constant time.** They can be supplied via `x-liquid-token`, `Authorization: Bearer`, or `?token=` (needed for browser WebSocket handshakes).
 - **The URL token is stored and stripped.** `app.js` writes it to `localStorage` and removes it from the address bar. Avoid pasting tokens into shared screenshots or shell history; rotate if leaked.
 - **No TLS.** Use a trusted LAN, Tailscale, or a reverse proxy. A token over plain HTTP can be observed by anyone on the path.
@@ -969,6 +1190,32 @@ Grant Accessibility permission to the terminal or binary. `osascript` returns a 
 - Check the response `message`; stderr is included and truncated.
 - The timeout is 10 seconds.
 
+### Soundboard buttons do nothing
+
+- Run the server with `--sounds <DIR>` (or `LIQUID_DECK_SOUNDS`). `--no-sounds` disables the soundboard entirely, and the editor then shows “Soundboard disabled”.
+- Only files with a supported audio extension are listed. Check the **Integrations → Soundboard** list; if a clip is missing, its extension is probably unsupported.
+- Linux needs one player on `PATH`: `paplay`, `pw-play`, `ffplay`, `mpv` or `aplay`. Install `pulseaudio-utils` / `pipewire-audio` for the first two.
+- The startup banner prints the resolved **Sounds** directory. Copy clips there; the server does not rescan the filesystem on every keystroke, so refresh the page after adding files.
+- If the clip previews in the browser but the hardware plays nothing, the server is reaching a different audio session. Check `XDG_RUNTIME_DIR` / `PULSE_SERVER` when running as a service.
+
+### OBS actions fail or the test times out
+
+- OBS Studio 28+ is required, with **Tools → WebSocket Server Settings → Enable WebSocket server** turned on. The default port is `4455`.
+- The URL must start with `ws://` — for example `ws://127.0.0.1:4455`. `wss://` is rejected unless you put a TLS proxy in front of OBS and point the URL at the proxy.
+- Copy the password from OBS into **Integrations**. An empty password is valid when OBS authentication is disabled.
+- `connection refused` means OBS is closed or the port is wrong. A timeout usually means a firewall or a wrong host when OBS runs on another machine.
+- OBS only accepts one authenticated session per action; a very fast burst of OBS buttons may briefly queue. The action error includes the obs-websocket reason (`AuthenticationFailed`, `RequestStatus`…).
+- Scene and source names are case-sensitive and must match exactly, including spaces and emoji.
+
+### The audio mixer says “Mixer unavailable”
+
+- Linux requires `pactl` (`pulseaudio-utils`, also shipped by PipeWire’s PulseAudio shim). Verify with `pactl info`.
+- If `pactl` exists but lists no devices, the server user cannot reach the session bus. Export `XDG_RUNTIME_DIR=/run/user/$(id -u)` in the service unit.
+- macOS needs `SwitchAudioSource` (`brew install switchaudio-osx`) for output switching. Without it, the mixer can still change volume through AppleScript but cannot switch outputs.
+- Windows reports the mixer as unsupported; use the volume buttons and media keys instead.
+- Application rows only appear while something is actually playing audio (`pactl list sink-inputs` is empty otherwise).
+- Slider changes are sent on release, not while dragging. If nothing changes, check the toast for the `pactl` error text.
+
 ### ADB says `unauthorized`, `offline` or `no route to host`
 
 - Reconnect USB, accept the RSA prompt, then `adb tcpip 5555` again.
@@ -1009,7 +1256,11 @@ liquid-deck/
 ├── src/
 │   ├── main.rs          # server, config, auth, routes, WebSocket
 │   ├── metrics.rs       # sysinfo sampler, history, TCP ping
-│   └── actions.rs       # action validation + platform backends
+│   ├── deck.rs          # boards.json model, validation, state persistence
+│   ├── actions.rs       # action validation + platform backends
+│   ├── audio.rs         # output/application mixer
+│   ├── obs.rs           # obs-websocket v5 client
+│   └── sounds.rs        # soundboard library and playback
 ├── web/
 │   ├── index.html
 │   ├── style.css
@@ -1020,7 +1271,8 @@ liquid-deck/
 │   ├── noise.png
 │   └── manifest.webmanifest
 ├── assets/
-│   └── icon.png
+│   ├── icon.png
+│   └── sounds/          # embedded seed clips (click/chime/alert)
 ├── integrations/
 │   └── note4-panel.sh   # optional ADB wake/sleep helper
 ├── .github/workflows/

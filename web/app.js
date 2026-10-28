@@ -273,7 +273,6 @@
     state.booted = true;
 
     initRings();
-    bindDeck();
     bindBoards();
     bindEditor();
     bindAudio();
@@ -1481,6 +1480,20 @@
     return JSON.parse(JSON.stringify(state.config));
   }
 
+  function normalizeDraftShape(draft) {
+    if (!draft.settings) draft.settings = {};
+    if (!draft.settings.obs) {
+      draft.settings.obs = { url: "ws://127.0.0.1:4455", password: "" };
+    }
+    if (!draft.settings.default_board && draft.boards[0]) {
+      draft.settings.default_board = draft.boards[0].id;
+    }
+    for (const board of draft.boards) {
+      if (!Array.isArray(board.buttons)) board.buttons = [];
+    }
+    return draft;
+  }
+
   function editorBoard() {
     const draft = state.editor.draft;
     if (!draft || !Array.isArray(draft.boards)) return null;
@@ -1522,8 +1535,7 @@
       toast("Could not open the editor.", "error");
       return;
     }
-    if (!draft.settings) draft.settings = {};
-    if (!draft.settings.obs) draft.settings.obs = { url: "", password: "" };
+    normalizeDraftShape(draft);
 
     editor.draft = draft;
     editor.boardId =
@@ -1570,9 +1582,13 @@
     const editor = state.editor;
     if (tab === editor.tab) return;
 
-    if (editor.tab === "json" && !applyJsonDraft()) {
-      toast(editor.jsonError || "Fix the JSON before leaving this tab.", "error");
-      return;
+    if (editor.tab === "json") {
+      if (!applyJsonDraft()) {
+        renderEditor();
+        toast(editor.jsonError || "Fix the JSON before leaving this tab.", "error");
+        return;
+      }
+      editor.jsonText = null;
     }
 
     if (tab === "json" && editor.jsonText == null) {
@@ -2153,7 +2169,7 @@
           </div>
           <div class="settings-row">
             <span class="settings-row-copy"><strong>Audio mixer</strong><small>pactl on Linux · SwitchAudioSource on macOS</small></span>
-            <span class="audio-badge">${state.soundsEnabled ? "Ready" : "Off"}</span>
+            <span class="audio-badge">Ready</span>
           </div>
           <div class="settings-row">
             <span class="settings-row-copy"><strong>Scripts</strong><small>${
@@ -2216,6 +2232,7 @@
       }
       if (!parsed.settings) parsed.settings = {};
       if (!parsed.settings.obs) parsed.settings.obs = { url: "", password: "" };
+      normalizeDraftShape(parsed);
       editor.draft = parsed;
       editor.jsonError = "";
       const board = editorBoard();
