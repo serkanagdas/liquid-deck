@@ -138,7 +138,7 @@ svg {
   display: block;
   border-radius: 50%;
   /* Static glow only — no animation, no promoted layer, no per-frame repaint. */
-  contain: strict;
+  contain: paint;
 }
 
 .orb-a {
@@ -480,6 +480,7 @@ html[data-fx="full"] .orb-d { animation: drift-d 30s ease-in-out infinite altern
 /* Performance / Liquid Glass toggle */
 .pill-btn {
   appearance: none;
+  -webkit-appearance: none;
   cursor: pointer;
   touch-action: manipulation;
   transition: color 0.18s ease, border-color 0.18s ease, transform 0.14s var(--ease);
@@ -1797,6 +1798,7 @@ footer {
 
 .board-tab:focus-visible,
 .icon-btn:focus-visible,
+.pill-btn:focus-visible,
 .mini-btn:focus-visible,
 .btn:focus-visible,
 .sheet-tabs button:focus-visible,
