@@ -1112,7 +1112,7 @@ fn parse_config() -> Result<Config, String> {
     let sample_ms: u64 = env::var("LIQUID_DECK_INTERVAL_MS")
         .ok()
         .and_then(|value| value.parse().ok())
-        .unwrap_or(1_000);
+        .unwrap_or(2_000);
     let idle_ms: u64 = env::var("LIQUID_DECK_IDLE_MS")
         .ok()
         .and_then(|value| value.parse().ok())

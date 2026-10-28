@@ -5,7 +5,7 @@
 (() => {
   "use strict";
 
-  const HISTORY_LEN = 60;
+  const HISTORY_LEN = 24;
   const RING_CIRCUMFERENCE = 2 * Math.PI * 54;
   const TOKEN_KEY = "liquid-deck.token";
   const MAX_RECONNECT_MS = 10_000;
@@ -179,8 +179,6 @@
     netUpBar: $("#netUpBar"),
     rxLine: $("#rxLine"),
     txLine: $("#txLine"),
-    rxArea: $("#rxArea"),
-    txArea: $("#txArea"),
     netPeak: $("#netPeak"),
     netTotal: $("#netTotal"),
 
@@ -189,7 +187,6 @@
     editBtn: $("#editBtn"),
     audioBtn: $("#audioBtn"),
     deckNote: $("#deckNote"),
-    fxToggle: $("#fxToggle"),
     toasts: $("#toasts"),
 
     sysHost: $("#sysHost"),
@@ -225,7 +222,6 @@
     authRequired: false,
     locked: false,
     booted: false,
-    fx: "perf",
     ws: null,
     wsOpen: false,
     reconnectAttempt: 0,
@@ -269,60 +265,6 @@
   });
 
   // -------------------------------------------------------------------------
-  // Effect tiers (Performance / Liquid Glass)
-  // -------------------------------------------------------------------------
-
-  const FX_KEY = "liquid-deck-fx";
-
-  function readFxMode() {
-    try {
-      const query = new URLSearchParams(location.search).get("fx");
-      if (query === "full" || query === "perf") return query;
-      const stored = localStorage.getItem(FX_KEY);
-      if (stored === "full" || stored === "perf") return stored;
-    } catch {
-      /* storage disabled (private mode) — keep the fast default */
-    }
-    return "perf";
-  }
-
-  function applyFxMode(mode, options = {}) {
-    const next = mode === "full" ? "full" : "perf";
-    state.fx = next;
-    document.documentElement.dataset.fx = next;
-
-    if (els.fxToggle) {
-      const full = next === "full";
-      els.fxToggle.setAttribute("aria-pressed", String(!full));
-      els.fxToggle.setAttribute(
-        "aria-label",
-        full ? "Liquid Glass effects on" : "Performance mode on",
-      );
-      els.fxToggle.title = full
-        ? "Liquid Glass — tap for Performance mode"
-        : "Performance mode — tap for Liquid Glass effects";
-      const label = $(".pill-label", els.fxToggle);
-      if (label) label.textContent = full ? "Glass" : "Perf";
-    }
-
-    if (options.persist !== false) {
-      try {
-        localStorage.setItem(FX_KEY, next);
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  function bindFxToggle() {
-    if (!els.fxToggle) return;
-    els.fxToggle.addEventListener("click", () => {
-      applyFxMode(state.fx === "full" ? "perf" : "full");
-      vibrate(6);
-    });
-  }
-
-  // -------------------------------------------------------------------------
   // Boot
   // -------------------------------------------------------------------------
 
@@ -330,8 +272,6 @@
     state.token = readToken();
     state.booted = true;
 
-    applyFxMode(readFxMode(), { persist: false });
-    bindFxToggle();
     initRings();
     bindBoards();
     bindEditor();
@@ -805,7 +745,10 @@
       element.dataset.offset = offset;
       element.style.strokeDashoffset = offset;
     }
-    element.classList.toggle("is-hot", value >= 85);
+    const hot = value >= 85;
+    if (element.classList.contains("is-hot") !== hot) {
+      element.classList.toggle("is-hot", hot);
+    }
   }
 
   function setAttr(element, name, value) {
@@ -837,8 +780,8 @@
     const count = history.length;
     if (!count || !els.rxLine) return;
 
-    // Single pass: collect both series and the peak together (no spread of 120
-    // arguments into Math.max, no two throw-away arrays).
+    // Single pass: collect both series and the peak together (no spread of
+    // thousands of arguments into Math.max, no throw-away arrays).
     const rxValues = new Array(count);
     const txValues = new Array(count);
     let peak = 1;
@@ -856,14 +799,8 @@
     state.chartMax = Math.max(target, state.chartMax * 0.9);
     const scale = state.chartMax;
 
-    // One geometry pass per series: the area path is the line path plus two
-    // closing segments, so linePath() is never re-run for the fill.
-    const down = chartPath(rxValues, scale);
-    const up = chartPath(txValues, scale);
-    setAttr(els.rxLine, "d", down.line);
-    setAttr(els.txLine, "d", up.line);
-    setAttr(els.rxArea, "d", down.area);
-    setAttr(els.txArea, "d", up.area);
+    setAttr(els.rxLine, "d", chartPath(rxValues, scale));
+    setAttr(els.txLine, "d", chartPath(txValues, scale));
 
     setMeter(els.netDownBar, ((currentRx || 0) / scale) * 100);
     setMeter(els.netUpBar, ((currentTx || 0) / scale) * 100);
@@ -872,8 +809,8 @@
     setText(els.netPeak, `peak ${peakLabel.value} ${peakLabel.unit}`);
   }
 
-  // Straight segments with integer coordinates: ~4x shorter `d` strings than
-  // 60 cubic Béziers with two toFixed(2) calls each, and no float formatting.
+  // Straight segments with integer coordinates: compact `d` strings and no
+  // per-tick float formatting. No area fill is drawn: flat strokes only.
   function chartPath(values, maximum) {
     const count = values.length;
     const step = CHART_W / Math.max(1, count - 1);
@@ -885,10 +822,7 @@
     for (let index = 1; index < count; index += 1) {
       line += `L${Math.round(index * step)} ${yFor(values[index])}`;
     }
-    return {
-      line,
-      area: `${line}L${CHART_W} ${CHART_H}L0 ${CHART_H}Z`,
-    };
+    return line;
   }
 
   // -------------------------------------------------------------------------

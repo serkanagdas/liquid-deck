@@ -93,7 +93,7 @@ Liquid Deck runs on the machine you want to monitor, serves an embedded dashboar
 2. Network counters are converted to bytes/second using the elapsed time between samples. Loopback interfaces are ignored.
 3. A TCP handshake to `1.1.1.1:443` (configurable) measures latency without requiring root or raw sockets.
 4. The latest sample is stored in an `RwLock`; the last 60 samples are kept in a `VecDeque` for the network chart.
-5. While at least one WebSocket viewer is connected, a sample is broadcast every `LIQUID_DECK_INTERVAL_MS` (default 1000 ms).
+5. While at least one WebSocket viewer is connected, a sample is broadcast every `LIQUID_DECK_INTERVAL_MS` (default 2000 ms).
 6. With no viewers and no recent HTTP poll, the sampler sleeps for `LIQUID_DECK_IDLE_MS` (default 5000 ms) and **skips all sysinfo refreshes**. An idle deck costs effectively no CPU.
 7. The ping task runs every 5 seconds while active and also skips probes when idle.
 
@@ -319,7 +319,7 @@ Command-line flags override environment variables, which override defaults.
 | `--sounds <DIR>` | `LIQUID_DECK_SOUNDS` | `<data>/sounds` | Soundboard directory. |
 | `--no-sounds` | — | off | Disable the soundboard. |
 | `--ping <HOST:PORT>` | `LIQUID_DECK_PING_TARGET` | `1.1.1.1:443` | TCP ping target. A bare host gets `:443`. |
-| — | `LIQUID_DECK_INTERVAL_MS` | `1000` | Active sample interval, clamped to 250–10000 ms. |
+| — | `LIQUID_DECK_INTERVAL_MS` | `2000` | Active sample interval, clamped to 250–10000 ms. |
 | — | `LIQUID_DECK_IDLE_MS` | `5000` | Idle sample interval, clamped to 1000–60000 ms. |
 | — | `LIQUID_DECK_LAUNCH_<TARGET>` | platform default | Override a launch target with a custom command. |
 | — | `LIQUID_DECK_GAME_MODE_ON` | no hook | Shell command run when game mode is enabled. |
@@ -653,7 +653,7 @@ or `?token=my-secret` for browser WebSocket handshakes. The token is compared in
   "host": "desk",
   "ok": true,
   "os": "Linux (Ubuntu 24.04)",
-  "sample_ms": 1000,
+  "sample_ms": 2000,
   "scripts": false,
   "uptime": 268939,
   "version": "1.0.0"
@@ -760,7 +760,7 @@ Connect to `/ws` (or `/wss` behind TLS). The server sends `hello` immediately:
   "version": "1.0.0",
   "host": "desk",
   "os": "Linux (Ubuntu 24.04)",
-  "interval_ms": 1000,
+  "interval_ms": 2000,
   "history": [{"t": 1793158988000, "rx": 12.4, "tx": 3.1, "cpu": 8.2, "ram": 51.0}],
   "metrics": {"ts": 1793158989000, "cpu": 8.4},
   "actions": ["key", "media", "volume"],
@@ -1126,7 +1126,7 @@ Measured on the reference Linux x86_64 build in a container, with the release pr
 | RSS, no viewers | **~2.9 MiB** |
 | RSS, one live WebSocket viewer | **~3.1 MiB** |
 | CPU, idle | effectively **0%** (`ps` reports 0.0) |
-| Active sample interval | 1000 ms |
+| Active sample interval | 2000 ms |
 | Idle sample interval | 5000 ms |
 | Network history | 60 points |
 
