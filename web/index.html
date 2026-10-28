@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-fx="perf">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
@@ -41,6 +41,11 @@
       </div>
 
       <div class="status-cluster">
+        <button class="pill pill-btn" id="fxToggle" type="button" aria-pressed="true"
+                aria-label="Performance mode" title="Performance mode — tap for Liquid Glass effects">
+          <svg class="pill-icon" aria-hidden="true"><use href="#icon-bolt"></use></svg>
+          <span class="pill-label">Perf</span>
+        </button>
         <div class="pill ping-pill" id="pingPill" data-quality="unknown" title="TCP latency">
           <svg class="pill-icon" aria-hidden="true"><use href="#icon-activity"></use></svg>
           <span class="pill-value" id="pingValue">--</span>

@@ -1028,7 +1028,7 @@ Cron does not inherit your shell environment; set `ADB_BIN`, `ADB_TARGET`, `DECK
 - Lower brightness for a dark room; the UI is already AMOLED black.
 - Let the screen sleep when unused. Static bright elements are the main burn-in risk; the ambient orbs are dim and animated slowly.
 - `locksettings set-disabled true` can remove the lock screen for a dedicated panel. This weakens physical security; re-enable it with `locksettings set-disabled false`.
-- If Chrome feels sluggish on the Note 4’s GPU, enable **Developer options → Remove animations** (the CSS respects `prefers-reduced-motion`) and close background apps. The glass blur is the most expensive effect; the stylesheet also handles `prefers-reduced-transparency` and browsers without `backdrop-filter`.
+- If Chrome feels sluggish on the Note 4’s GPU, keep the default **Performance** tier (bolt pill in the top bar), enable **Developer options → Remove animations** (the CSS respects `prefers-reduced-motion`) and close background apps. Liquid Glass is opt-in because real backdrop blur is the most expensive effect; the stylesheet also handles `prefers-reduced-transparency` and browsers without `backdrop-filter`.
 - Keep the tablet on USB power for 24/7 use. Old Note 4 batteries dislike being held at 100% and heat; check `dumpsys battery` and avoid direct sunlight.
 
 ---
@@ -1133,6 +1133,19 @@ Measured on the reference Linux x86_64 build in a container, with the release pr
 The browser’s memory is separate and depends on Chrome/WebView. The backend uses a single-threaded Tokio runtime and no TLS stack; that is deliberate. If you need TLS, terminate it at a proxy.
 
 The idle sampler skips `sysinfo` refreshes entirely, and the ping task skips probes when no viewer is active. The first metrics request may return `warming_up` for about 250 ms while CPU counters settle.
+
+### Frontend: Performance vs Liquid Glass
+
+The stylesheet ships in **Performance mode** by default, which is designed for old mobile GPUs such as the Galaxy Note 4’s Mali-T760 at 1440 × 2560:
+
+- **Faux glass** instead of `backdrop-filter: blur()`: a translucent dark fill (`rgba(18, 20, 26, 0.78)`), a 1px `rgba(255, 255, 255, 0.08)` border and an inset specular highlight. Zero per-frame blur work across cards, keys, pills, sheets and toasts.
+- **Static ambient glow**: the four orbs are plain radial gradients with no `drift-*` animations and no promoted layers, so the background paints once.
+- **No noise overlay**: the `mix-blend-mode` grain layer is hidden to avoid an extra full-viewport composite.
+- **Cheap shadows**: large blur radii were replaced with `--shadow-card`, `--shadow-key`, `--shadow-bar` and `--shadow-panel` tokens.
+- **Compositor-only press feedback**: keys use `transform: translateZ(0) scale(0.96)` and transition only `transform`, `border-color` and `opacity`; no layout, no `background`/`box-shadow` animation.
+- **Incremental DOM**: the deck grid, board tabs, ring gauges, chart paths and key toggles are only touched when their value actually changes.
+
+Tap the bolt pill in the top bar (or open `/?fx=full`) to enable **Liquid Glass** with real blur and the slow ambient drift. The choice is stored in `localStorage` under `liquid-deck-fx`. `prefers-reduced-transparency` and `prefers-reduced-motion` still force the cheap path, and browsers without `backdrop-filter` fall back to opaque panels.
 
 ---
 
@@ -1239,7 +1252,7 @@ Install FUSE, or run:
 
 ### The UI is slow on the Note 4
 
-The blur is GPU-heavy. Enable **Developer options → Remove animations**, close background apps, and avoid extremely high brightness. The CSS falls back to opaque panels when `backdrop-filter` is unavailable and honors `prefers-reduced-transparency` / `prefers-reduced-motion`.
+The UI now defaults to the blur-free **Performance** tier, which is what the Note 4 should use. If you switched to **Liquid Glass** with the bolt pill (or `?fx=full`), tap it again to go back; real backdrop blur is GPU-heavy. Also enable **Developer options → Remove animations**, close background apps, and avoid extremely high brightness. The CSS falls back to opaque panels when `backdrop-filter` is unavailable and honors `prefers-reduced-transparency` / `prefers-reduced-motion`.
 
 ### WebSocket works locally but not through a proxy
 

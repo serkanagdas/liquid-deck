@@ -189,6 +189,7 @@
     editBtn: $("#editBtn"),
     audioBtn: $("#audioBtn"),
     deckNote: $("#deckNote"),
+    fxToggle: $("#fxToggle"),
     toasts: $("#toasts"),
 
     sysHost: $("#sysHost"),
@@ -224,6 +225,7 @@
     authRequired: false,
     locked: false,
     booted: false,
+    fx: "perf",
     ws: null,
     wsOpen: false,
     reconnectAttempt: 0,
@@ -242,6 +244,8 @@
     deckState: { toggles: {}, active_board: "", updated_at: 0 },
     activeBoard: "",
     boardStack: [],
+    deckSignature: "",
+    tabsSignature: "",
     sounds: [],
     soundsEnabled: true,
     previewAudio: null,
@@ -265,6 +269,60 @@
   });
 
   // -------------------------------------------------------------------------
+  // Effect tiers (Performance / Liquid Glass)
+  // -------------------------------------------------------------------------
+
+  const FX_KEY = "liquid-deck-fx";
+
+  function readFxMode() {
+    try {
+      const query = new URLSearchParams(location.search).get("fx");
+      if (query === "full" || query === "perf") return query;
+      const stored = localStorage.getItem(FX_KEY);
+      if (stored === "full" || stored === "perf") return stored;
+    } catch {
+      /* storage disabled (private mode) — keep the fast default */
+    }
+    return "perf";
+  }
+
+  function applyFxMode(mode, options = {}) {
+    const next = mode === "full" ? "full" : "perf";
+    state.fx = next;
+    document.documentElement.dataset.fx = next;
+
+    if (els.fxToggle) {
+      const full = next === "full";
+      els.fxToggle.setAttribute("aria-pressed", String(!full));
+      els.fxToggle.setAttribute(
+        "aria-label",
+        full ? "Liquid Glass effects on" : "Performance mode on",
+      );
+      els.fxToggle.title = full
+        ? "Liquid Glass — tap for Performance mode"
+        : "Performance mode — tap for Liquid Glass effects";
+      const label = $(".pill-label", els.fxToggle);
+      if (label) label.textContent = full ? "Glass" : "Perf";
+    }
+
+    if (options.persist !== false) {
+      try {
+        localStorage.setItem(FX_KEY, next);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  function bindFxToggle() {
+    if (!els.fxToggle) return;
+    els.fxToggle.addEventListener("click", () => {
+      applyFxMode(state.fx === "full" ? "perf" : "full");
+      vibrate(6);
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Boot
   // -------------------------------------------------------------------------
 
@@ -272,6 +330,8 @@
     state.token = readToken();
     state.booted = true;
 
+    applyFxMode(readFxMode(), { persist: false });
+    bindFxToggle();
     initRings();
     bindBoards();
     bindEditor();
@@ -676,12 +736,16 @@
       const display = ping < 10 ? ping.toFixed(1) : String(Math.round(ping));
       setText(els.pingValue, display);
       setText(els.sysPing, `${display} ms`);
-      els.pingPill.dataset.quality =
-        ping < 60 ? "good" : ping < 150 ? "ok" : "bad";
+      const quality = ping < 60 ? "good" : ping < 150 ? "ok" : "bad";
+      if (els.pingPill.dataset.quality !== quality) {
+        els.pingPill.dataset.quality = quality;
+      }
     } else {
       setText(els.pingValue, "--");
       setText(els.sysPing, "—");
-      els.pingPill.dataset.quality = "unknown";
+      if (els.pingPill.dataset.quality !== "unknown") {
+        els.pingPill.dataset.quality = "unknown";
+      }
     }
 
     setText(els.sysUptime, formatUptime(Number(metrics.uptime) || 0));
@@ -726,9 +790,24 @@
   function setRing(element, percent) {
     if (!element) return;
     const value = clamp(percent, 0, 100);
-    const offset = RING_CIRCUMFERENCE * (1 - value / 100);
-    element.style.strokeDashoffset = String(offset);
+    const offset = String(RING_CIRCUMFERENCE * (1 - value / 100));
+    if (element.dataset.offset !== offset) {
+      element.dataset.offset = offset;
+      element.style.strokeDashoffset = offset;
+    }
     element.classList.toggle("is-hot", value >= 85);
+  }
+
+  function setAttr(element, name, value) {
+    if (element && element.getAttribute(name) !== value) {
+      element.setAttribute(name, value);
+    }
+  }
+
+  function setWidth(element, value) {
+    if (element && element.style.width !== value) {
+      element.style.width = value;
+    }
   }
 
   function renderNetwork(currentRx, currentTx) {
@@ -740,19 +819,19 @@
     state.chartMax = Math.max(target, state.chartMax * 0.9);
     const scale = state.chartMax;
 
-    if (els.rxLine) els.rxLine.setAttribute("d", linePath(rxValues, scale));
-    if (els.txLine) els.txLine.setAttribute("d", linePath(txValues, scale));
-    if (els.rxArea) els.rxArea.setAttribute("d", areaPath(rxValues, scale));
-    if (els.txArea) els.txArea.setAttribute("d", areaPath(txValues, scale));
+    setAttr(els.rxLine, "d", linePath(rxValues, scale));
+    setAttr(els.txLine, "d", linePath(txValues, scale));
+    setAttr(els.rxArea, "d", areaPath(rxValues, scale));
+    setAttr(els.txArea, "d", areaPath(txValues, scale));
 
-    if (els.netDownBar) {
-      const width = clamp(((currentRx || 0) / scale) * 100, 0, 100);
-      els.netDownBar.style.width = `${width}%`;
-    }
-    if (els.netUpBar) {
-      const width = clamp(((currentTx || 0) / scale) * 100, 0, 100);
-      els.netUpBar.style.width = `${width}%`;
-    }
+    setWidth(
+      els.netDownBar,
+      `${clamp(((currentRx || 0) / scale) * 100, 0, 100)}%`,
+    );
+    setWidth(
+      els.netUpBar,
+      `${clamp(((currentTx || 0) / scale) * 100, 0, 100)}%`,
+    );
 
     const peakLabel = formatRate(scale);
     setText(els.netPeak, `peak ${peakLabel.value} ${peakLabel.unit}`);
@@ -937,6 +1016,13 @@
     const boards = state.config && Array.isArray(state.config.boards)
       ? state.config.boards
       : [];
+    const signature = `${state.activeBoard}|${state.boardStack.join(",")}|${boards
+      .map((board) => `${board.id}:${board.name}:${board.accent || ""}`)
+      .join("|")}`;
+    if (signature === state.tabsSignature && els.boardTabs.childElementCount) {
+      return;
+    }
+    state.tabsSignature = signature;
 
     const parts = [];
     if (state.boardStack.length) {
@@ -992,16 +1078,49 @@
         : "";
 
     return `<button class="key${active ? " is-active" : ""}" ${attrs}
+      data-active="${active ? 1 : 0}"
       style="${spanStyle}${tone}">
-      <span class="key-icon" aria-hidden="true">${iconMarkup(icon)}</span>
+      <span class="key-icon" aria-hidden="true" data-icon="${esc(icon)}">${iconMarkup(icon)}</span>
       <span class="key-copy"><strong>${esc(label)}</strong>${subtitle}</span>
       <span class="key-led" aria-hidden="true"></span>
     </button>`;
   }
 
+  function deckSignature(board) {
+    if (!board) return "pending";
+    const showSubtitles =
+      !state.config || !state.config.settings
+        ? true
+        : state.config.settings.show_subtitles !== false;
+    const parts = [board.id, Number(board.columns) || 4, showSubtitles ? 1 : 0];
+    for (const button of board.buttons || []) {
+      parts.push(
+        button.id,
+        button.label,
+        button.subtitle || "",
+        button.icon || "",
+        button.active_icon || "",
+        button.active_label || "",
+        button.color || "",
+        Number(button.span) || 1,
+        button.action || "",
+      );
+    }
+    return parts.join("\u0001");
+  }
+
   function renderDeck() {
     if (!els.deck) return;
     const board = currentBoard();
+    const signature = deckSignature(board);
+
+    // Rebuild only when the board structure actually changed; otherwise just
+    // reconcile the toggle state of the keys that are already in the DOM.
+    if (signature === state.deckSignature && els.deck.childElementCount) {
+      refreshToggleStates();
+      return;
+    }
+    state.deckSignature = signature;
 
     if (!board) {
       els.deck.style.gridTemplateColumns = "repeat(4, minmax(0, 1fr))";
@@ -1048,6 +1167,10 @@
   }
 
   function updateKeyState(node, board, button, active) {
+    const flag = active ? "1" : "0";
+    if (node.dataset.active === flag) return;
+    node.dataset.active = flag;
+
     node.classList.toggle("is-active", Boolean(active));
     node.setAttribute("aria-pressed", String(Boolean(active)));
 
@@ -1057,7 +1180,10 @@
       active && button.active_label ? button.active_label : button.label;
     const iconHost = $(".key-icon", node);
     const labelNode = $(".key-copy strong", node);
-    if (iconHost) iconHost.innerHTML = iconMarkup(icon);
+    if (iconHost && iconHost.dataset.icon !== icon) {
+      iconHost.dataset.icon = icon;
+      iconHost.innerHTML = iconMarkup(icon);
+    }
     if (labelNode) setText(labelNode, label);
   }
 

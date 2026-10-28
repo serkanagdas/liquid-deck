@@ -22,11 +22,32 @@
   --yellow: #ffd60a;
   --radius: 30px;
   --radius-sm: 24px;
-  --blur: 24px;
+
+  /* Glass tiers. Default is "faux glass": opaque translucent fills, a 1px
+     specular edge and an inset highlight — zero backdrop-filter cost.
+     `html[data-fx="full"]` opts back into real blur on capable GPUs. */
+  --glass-filter-soft: none;
+  --glass-filter: none;
+  --glass-filter-strong: none;
+
+  /* Cheap, static shadows (no huge blur radii, no per-frame repaint). */
+  --shadow-card: 0 10px 26px rgba(0, 0, 0, 0.46);
+  --shadow-key: 0 6px 16px rgba(0, 0, 0, 0.4);
+  --shadow-bar: 0 8px 22px rgba(0, 0, 0, 0.5);
+  --shadow-panel: 0 22px 54px rgba(0, 0, 0, 0.62);
+
   --ease: cubic-bezier(0.22, 0.8, 0.26, 1);
   --ease-spring: cubic-bezier(0.34, 1.45, 0.5, 1);
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Opt-in "Liquid Glass" tier: real backdrop blur for desktops / new phones.
+   Toggled from the top bar or with ?fx=full. */
+html[data-fx="full"] {
+  --glass-filter-soft: blur(14px) saturate(150%);
+  --glass-filter: blur(18px) saturate(160%);
+  --glass-filter-strong: blur(28px) saturate(170%);
 }
 
 *,
@@ -116,8 +137,8 @@ svg {
   position: absolute;
   display: block;
   border-radius: 50%;
-  transform: translate3d(0, 0, 0);
-  will-change: transform;
+  /* Static glow only — no animation, no promoted layer, no per-frame repaint. */
+  contain: strict;
 }
 
 .orb-a {
@@ -131,7 +152,6 @@ svg {
     rgba(10, 132, 255, 0.09) 42%,
     transparent 70%
   );
-  animation: drift-a 34s ease-in-out infinite alternate;
 }
 
 .orb-b {
@@ -145,7 +165,6 @@ svg {
     rgba(191, 90, 242, 0.07) 44%,
     transparent 70%
   );
-  animation: drift-b 42s ease-in-out infinite alternate;
 }
 
 .orb-c {
@@ -159,7 +178,6 @@ svg {
     rgba(100, 210, 255, 0.04) 46%,
     transparent 72%
   );
-  animation: drift-c 38s ease-in-out infinite alternate;
 }
 
 .orb-d {
@@ -172,10 +190,12 @@ svg {
     rgba(255, 55, 95, 0.11),
     transparent 68%
   );
-  animation: drift-d 30s ease-in-out infinite alternate;
 }
 
 .noise {
+  /* Film grain is disabled by default: mix-blend-mode + a tiled texture over
+     the whole viewport forces an extra full-screen composite every frame. */
+  display: none;
   position: absolute;
   inset: 0;
   background-image: url("/noise.png");
@@ -214,6 +234,20 @@ svg {
   to { transform: translate3d(-3vw, -4vh, 0) scale(1.16); }
 }
 
+/* Full-effects tier only: bring back grain and the slow ambient drift. */
+html[data-fx="full"] .noise {
+  display: block;
+}
+
+html[data-fx="full"] .orb {
+  will-change: transform;
+}
+
+html[data-fx="full"] .orb-a { animation: drift-a 34s ease-in-out infinite alternate; }
+html[data-fx="full"] .orb-b { animation: drift-b 42s ease-in-out infinite alternate; }
+html[data-fx="full"] .orb-c { animation: drift-c 38s ease-in-out infinite alternate; }
+html[data-fx="full"] .orb-d { animation: drift-d 30s ease-in-out infinite alternate; }
+
 /* --------------------------------------------------------------------------
    Shell
    -------------------------------------------------------------------------- */
@@ -239,19 +273,20 @@ svg {
   gap: 14px;
   padding: 11px 15px;
   border-radius: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: linear-gradient(
-    150deg,
-    rgba(255, 255, 255, 0.075),
-    rgba(255, 255, 255, 0.022) 58%,
-    rgba(255, 255, 255, 0.045)
-  );
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(
+      150deg,
+      rgba(255, 255, 255, 0.07),
+      rgba(255, 255, 255, 0.015) 58%,
+      rgba(255, 255, 255, 0.035)
+    ),
+    rgba(18, 20, 26, 0.78);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
-    0 22px 55px rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(26px) saturate(170%);
-  -webkit-backdrop-filter: blur(26px) saturate(170%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    var(--shadow-bar);
+  backdrop-filter: var(--glass-filter-strong);
+  -webkit-backdrop-filter: var(--glass-filter-strong);
   overflow: hidden;
   isolation: isolate;
 }
@@ -400,11 +435,11 @@ svg {
   height: 32px;
   padding: 0 11px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.055);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(20, 22, 28, 0.75);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: var(--glass-filter-soft);
+  -webkit-backdrop-filter: var(--glass-filter-soft);
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
@@ -441,6 +476,37 @@ svg {
 .ping-pill[data-quality="good"] .pill-value { color: #c8ffd8; }
 .ping-pill[data-quality="ok"] .pill-value { color: #ffe0b0; }
 .ping-pill[data-quality="bad"] .pill-value { color: #ffc0cd; }
+
+/* Performance / Liquid Glass toggle */
+.pill-btn {
+  appearance: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 0.18s ease, border-color 0.18s ease, transform 0.14s var(--ease);
+}
+
+.pill-btn:active {
+  transform: scale(0.96);
+}
+
+.pill-btn .pill-icon {
+  color: var(--cyan);
+}
+
+.pill-btn[aria-pressed="true"] {
+  border-color: rgba(100, 210, 255, 0.34);
+  color: var(--ink);
+}
+
+.pill-btn[aria-pressed="false"] .pill-icon {
+  color: var(--violet);
+}
+
+.pill-label {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
 
 .status-dot {
   width: 6px;
@@ -531,21 +597,21 @@ svg {
   --accent-soft: rgba(100, 210, 255, 0.14);
   position: relative;
   border-radius: var(--radius);
-  border: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   background:
     radial-gradient(130% 105% at 12% 0%, var(--accent-soft), transparent 58%),
     linear-gradient(
       155deg,
-      rgba(255, 255, 255, 0.075),
-      rgba(255, 255, 255, 0.018) 52%,
-      rgba(255, 255, 255, 0.04)
-    );
+      rgba(255, 255, 255, 0.055),
+      rgba(255, 255, 255, 0.012) 52%,
+      rgba(255, 255, 255, 0.03)
+    ),
+    rgba(18, 20, 26, 0.72);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
-    0 24px 60px rgba(0, 0, 0, 0.52);
-  backdrop-filter: blur(var(--blur)) saturate(165%);
-  -webkit-backdrop-filter: blur(var(--blur)) saturate(165%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    var(--shadow-card);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
   overflow: hidden;
   isolation: isolate;
 }
@@ -1020,16 +1086,16 @@ svg {
   min-height: 84px;
   padding: 12px 13px;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   background:
     radial-gradient(125% 135% at 100% 0%, var(--tone-soft), transparent 56%),
-    linear-gradient(150deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02));
+    linear-gradient(150deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012)),
+    rgba(20, 22, 28, 0.75);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.19),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.025),
-    0 14px 34px rgba(0, 0, 0, 0.44);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    var(--shadow-key);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
   color: var(--ink);
   text-align: left;
   cursor: pointer;
@@ -1038,12 +1104,14 @@ svg {
   touch-action: manipulation;
   -webkit-user-select: none;
   user-select: none;
+  /* Small promoted layer so the press scale stays on the compositor and never
+     triggers layout/paint. Cards stay unpromoted to keep VRAM low. */
+  transform: translateZ(0);
+  backface-visibility: hidden;
   transition:
-    transform 0.17s var(--ease),
-    border-color 0.2s ease,
-    background 0.2s ease,
-    box-shadow 0.2s ease,
-    opacity 0.2s ease;
+    transform 0.15s var(--ease),
+    border-color 0.18s ease,
+    opacity 0.18s ease;
 }
 
 .key::before {
@@ -1078,13 +1146,11 @@ svg {
 
 .key.pressed,
 .key:active {
-  transform: scale(0.96);
-  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateZ(0) scale(0.96);
+  border-color: var(--tone-line);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    inset 0 0 22px var(--tone-soft),
-    0 4px 14px rgba(0, 0, 0, 0.5),
-    0 0 28px var(--tone-soft);
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
 .key.pressed::after,
@@ -1362,12 +1428,12 @@ footer {
   padding: 9px 14px;
   border-radius: 999px;
   border: 1px solid rgba(255, 159, 10, 0.26);
-  background: rgba(30, 24, 12, 0.82);
+  background: rgba(30, 24, 12, 0.88);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 14px 34px rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+    var(--shadow-bar);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
   color: #ffe0a8;
   font-size: 11px;
   font-weight: 600;
@@ -1428,12 +1494,12 @@ footer {
   padding: 10px 14px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(22, 22, 26, 0.88);
+  background: rgba(22, 22, 26, 0.9);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 16px 40px rgba(0, 0, 0, 0.58);
-  backdrop-filter: blur(22px) saturate(170%);
-  -webkit-backdrop-filter: blur(22px) saturate(170%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    var(--shadow-bar);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
   color: var(--ink);
   font-size: 11.5px;
   font-weight: 500;
@@ -1494,9 +1560,9 @@ footer {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.66);
-  backdrop-filter: blur(26px) saturate(130%);
-  -webkit-backdrop-filter: blur(26px) saturate(130%);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: var(--glass-filter-strong);
+  -webkit-backdrop-filter: var(--glass-filter-strong);
 }
 
 .lock[hidden] {
@@ -1507,15 +1573,16 @@ footer {
   width: min(380px, 100%);
   padding: 27px 24px 21px;
   border-radius: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background:
     radial-gradient(120% 90% at 50% 0%, rgba(10, 132, 255, 0.15), transparent 58%),
-    linear-gradient(155deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.035));
+    linear-gradient(155deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025)),
+    rgba(18, 20, 26, 0.9);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    0 40px 100px rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(30px) saturate(180%);
-  -webkit-backdrop-filter: blur(30px) saturate(180%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    var(--shadow-panel);
+  backdrop-filter: var(--glass-filter-strong);
+  -webkit-backdrop-filter: var(--glass-filter-strong);
   text-align: center;
   animation: lock-in 0.35s var(--ease-spring);
 }
@@ -1672,12 +1739,13 @@ footer {
   height: 34px;
   padding: 0 12px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+    linear-gradient(150deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.012)),
+    rgba(20, 22, 28, 0.72);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(16px) saturate(160%);
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: var(--glass-filter-soft);
+  -webkit-backdrop-filter: var(--glass-filter-soft);
   color: var(--muted);
   font-size: 10.5px;
   font-weight: 650;
@@ -1782,12 +1850,13 @@ footer {
   place-items: center;
   flex: none;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(16px) saturate(160%);
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
+    linear-gradient(150deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015)),
+    rgba(20, 22, 28, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: var(--glass-filter-soft);
+  -webkit-backdrop-filter: var(--glass-filter-soft);
   color: var(--muted);
   cursor: pointer;
   touch-action: manipulation;
@@ -1876,9 +1945,9 @@ body.is-sheet-open {
 .sheet-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.62);
-  backdrop-filter: blur(20px) saturate(130%);
-  -webkit-backdrop-filter: blur(20px) saturate(130%);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: var(--glass-filter-strong);
+  -webkit-backdrop-filter: var(--glass-filter-strong);
   animation: sheet-fade 0.24s ease;
 }
 
@@ -1900,10 +1969,10 @@ body.is-sheet-open {
     radial-gradient(120% 80% at 50% 0%, rgba(100, 210, 255, 0.1), transparent 55%),
     linear-gradient(160deg, rgba(30, 30, 36, 0.94), rgba(12, 12, 16, 0.96));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    0 40px 100px rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(32px) saturate(180%);
-  -webkit-backdrop-filter: blur(32px) saturate(180%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    var(--shadow-panel);
+  backdrop-filter: var(--glass-filter-strong);
+  -webkit-backdrop-filter: var(--glass-filter-strong);
   overflow: hidden;
   animation: sheet-in 0.3s var(--ease-spring);
 }
@@ -2835,7 +2904,6 @@ body.is-sheet-open {
 
 @media (max-width: 760px) {
   :root {
-    --blur: 19px;
     --radius: 27px;
   }
 
@@ -2925,6 +2993,14 @@ body.is-sheet-open {
     height: 30px;
     padding: 0 9px;
     font-size: 10px;
+  }
+
+  .pill-btn {
+    padding: 0 8px;
+  }
+
+  .pill-label {
+    display: none;
   }
 
   .status-cluster {
@@ -3026,6 +3102,49 @@ body.is-sheet-open {
   .key-copy strong {
     font-size: 10.5px;
   }
+}
+
+/* --------------------------------------------------------------------------
+   Performance tier (default) — keeps the compositor idle
+   -------------------------------------------------------------------------- */
+
+/* Decorative glows and pulsing dots only animate in the full-effects tier. */
+html:not([data-fx="full"]) .conn-pill[data-state="live"] .status-dot,
+html:not([data-fx="full"]) .footer-live i {
+  animation: none;
+}
+
+/* Static pseudo-element glows are dropped: one less gradient fill per card/key. */
+html:not([data-fx="full"]) .card::after,
+html:not([data-fx="full"]) .key::after {
+  display: none;
+}
+
+html:not([data-fx="full"]) .key.is-active {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 4px 12px rgba(0, 0, 0, 0.42);
+}
+
+html:not([data-fx="full"]) .key-icon,
+html:not([data-fx="full"]) .key-glyph {
+  text-shadow: none;
+}
+
+/* Full-screen overlays become opaque instead of translucent + blurred. */
+html:not([data-fx="full"]) .lock,
+html:not([data-fx="full"]) .sheet-backdrop {
+  background: rgba(0, 0, 0, 0.82);
+}
+
+/* Full-effects tier keeps the springy press glow. */
+html[data-fx="full"] .key.pressed,
+html[data-fx="full"] .key:active {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 0 22px var(--tone-soft),
+    0 4px 14px rgba(0, 0, 0, 0.5),
+    0 0 28px var(--tone-soft);
 }
 
 /* --------------------------------------------------------------------------
