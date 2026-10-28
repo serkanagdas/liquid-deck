@@ -461,7 +461,9 @@
     }
 
     clearTimeout(state.reconnectTimer);
-    setConnection("connecting");
+    // While the polling fallback owns the metrics feed, keep the pill on
+    // "Polling" instead of flapping through "Linking" on every retry.
+    if (!state.pollTimer) setConnection("connecting");
 
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
     const token = state.token ? `?token=${encodeURIComponent(state.token)}` : "";
@@ -483,7 +485,11 @@
       opened = true;
       state.wsOpen = true;
       state.reconnectAttempt = 0;
+      clearTimeout(state.reconnectTimer);
+      state.reconnectTimer = null;
       setConnection("live");
+      // The live socket is now the only source of metrics: hard-stop the
+      // fallback interval so no HTTP poll can race the WebSocket stream.
       stopPolling();
       startPing();
     });
@@ -516,7 +522,7 @@
         });
       }
 
-      setConnection("offline");
+      setConnection(state.pollTimer ? "polling" : "offline");
       scheduleReconnect();
       startPolling();
     });
@@ -629,7 +635,7 @@
   // -------------------------------------------------------------------------
 
   function startPolling() {
-    if (state.locked || state.pollTimer) return;
+    if (state.locked || state.pollTimer || state.wsOpen) return;
     state.pollTimer = setInterval(pollMetrics, 2000);
     pollMetrics();
   }
@@ -642,23 +648,27 @@
   }
 
   async function pollMetrics() {
-    if (state.locked) return;
+    if (state.locked || state.wsOpen) return;
     try {
       const response = await fetch("/api/metrics", {
         headers: authHeaders(),
         cache: "no-store",
       });
+      // A WebSocket may have reconnected while this request was in flight:
+      // drop the stale response instead of repainting the whole dashboard.
+      if (state.wsOpen) return;
       if (response.status === 401) {
         showLock("Token rejected. Check the server console.");
         return;
       }
       if (!response.ok) {
-        if (!state.wsOpen) setConnection("offline");
+        setConnection("offline");
         return;
       }
       const data = await response.json();
+      if (state.wsOpen) return;
       if (data && data.type === "metrics") {
-        if (!state.wsOpen) setConnection("polling");
+        setConnection("polling");
         applyMetrics(data);
       }
     } catch {
@@ -804,64 +814,81 @@
     }
   }
 
-  function setWidth(element, value) {
-    if (element && element.style.width !== value) {
-      element.style.width = value;
-    }
+  function setMeter(element, percent) {
+    if (!element) return;
+    // Quantise to 0.5%: consecutive ticks then usually produce the exact same
+    // transform, so the DOM write (and its style invalidation) is skipped.
+    const value = Math.round(clamp(percent, 0, 100) * 2) / 2;
+    const key = String(value);
+    if (element.dataset.meter === key) return;
+    element.dataset.meter = key;
+    // Compositor-only: `width` would re-lay-out the network card every tick.
+    element.style.transform = value >= 100 ? "none" : `scaleX(${value / 100})`;
   }
 
+  const CHART_W = 360;
+  const CHART_H = 110;
+  const CHART_TOP = 9;
+  const CHART_BOTTOM = 10;
+  const CHART_SPAN = CHART_H - CHART_TOP - CHART_BOTTOM;
+
   function renderNetwork(currentRx, currentTx) {
-    const rxValues = state.history.map((point) => Math.max(0, point.rx));
-    const txValues = state.history.map((point) => Math.max(0, point.tx));
-    const peak = Math.max(1, ...rxValues, ...txValues);
+    const history = state.history;
+    const count = history.length;
+    if (!count || !els.rxLine) return;
+
+    // Single pass: collect both series and the peak together (no spread of 120
+    // arguments into Math.max, no two throw-away arrays).
+    const rxValues = new Array(count);
+    const txValues = new Array(count);
+    let peak = 1;
+    for (let index = 0; index < count; index += 1) {
+      const point = history[index];
+      const rx = point.rx > 0 ? point.rx : 0;
+      const tx = point.tx > 0 ? point.tx : 0;
+      rxValues[index] = rx;
+      txValues[index] = tx;
+      if (rx > peak) peak = rx;
+      if (tx > peak) peak = tx;
+    }
 
     const target = Math.max(peak * 1.2, 1024);
     state.chartMax = Math.max(target, state.chartMax * 0.9);
     const scale = state.chartMax;
 
-    setAttr(els.rxLine, "d", linePath(rxValues, scale));
-    setAttr(els.txLine, "d", linePath(txValues, scale));
-    setAttr(els.rxArea, "d", areaPath(rxValues, scale));
-    setAttr(els.txArea, "d", areaPath(txValues, scale));
+    // One geometry pass per series: the area path is the line path plus two
+    // closing segments, so linePath() is never re-run for the fill.
+    const down = chartPath(rxValues, scale);
+    const up = chartPath(txValues, scale);
+    setAttr(els.rxLine, "d", down.line);
+    setAttr(els.txLine, "d", up.line);
+    setAttr(els.rxArea, "d", down.area);
+    setAttr(els.txArea, "d", up.area);
 
-    setWidth(
-      els.netDownBar,
-      `${clamp(((currentRx || 0) / scale) * 100, 0, 100)}%`,
-    );
-    setWidth(
-      els.netUpBar,
-      `${clamp(((currentTx || 0) / scale) * 100, 0, 100)}%`,
-    );
+    setMeter(els.netDownBar, ((currentRx || 0) / scale) * 100);
+    setMeter(els.netUpBar, ((currentTx || 0) / scale) * 100);
 
     const peakLabel = formatRate(scale);
     setText(els.netPeak, `peak ${peakLabel.value} ${peakLabel.unit}`);
   }
 
-  function linePath(values, maximum) {
-    const width = 360;
-    const height = 110;
-    const top = 9;
-    const bottom = 10;
-    const step = width / Math.max(1, values.length - 1);
-    const y = (value) =>
-      height - bottom - (Math.max(0, value) / maximum) * (height - top - bottom);
+  // Straight segments with integer coordinates: ~4x shorter `d` strings than
+  // 60 cubic Béziers with two toFixed(2) calls each, and no float formatting.
+  function chartPath(values, maximum) {
+    const count = values.length;
+    const step = CHART_W / Math.max(1, count - 1);
+    const ratio = CHART_SPAN / (maximum > 0 ? maximum : 1);
+    const base = CHART_H - CHART_BOTTOM;
+    const yFor = (value) => Math.round(base - (value > 0 ? value : 0) * ratio);
 
-    let path = `M0,${y(values[0]).toFixed(2)}`;
-    for (let index = 1; index < values.length; index += 1) {
-      const x0 = (index - 1) * step;
-      const x1 = index * step;
-      const y0 = y(values[index - 1]);
-      const y1 = y(values[index]);
-      const middle = (x0 + x1) / 2;
-      path += ` C${middle.toFixed(2)},${y0.toFixed(2)} ${middle.toFixed(
-        2,
-      )},${y1.toFixed(2)} ${x1.toFixed(2)},${y1.toFixed(2)}`;
+    let line = `M0 ${yFor(values[0])}`;
+    for (let index = 1; index < count; index += 1) {
+      line += `L${Math.round(index * step)} ${yFor(values[index])}`;
     }
-    return path;
-  }
-
-  function areaPath(values, maximum) {
-    return `${linePath(values, maximum)} L360,110 L0,110 Z`;
+    return {
+      line,
+      area: `${line}L${CHART_W} ${CHART_H}L0 ${CHART_H}Z`,
+    };
   }
 
   // -------------------------------------------------------------------------

@@ -248,6 +248,29 @@ html[data-fx="full"] .orb-b { animation: drift-b 42s ease-in-out infinite altern
 html[data-fx="full"] .orb-c { animation: drift-c 38s ease-in-out infinite alternate; }
 html[data-fx="full"] .orb-d { animation: drift-d 30s ease-in-out infinite alternate; }
 
+/* Performance tier (default): the four giant radial-gradient discs would each
+   become a multi-megabyte composited layer on Mali-T760. Drop the DOM orbs and
+   bake the same look into one cheap, static background on .ambient. */
+html:not([data-fx="full"]) .orb {
+  display: none;
+}
+
+html:not([data-fx="full"]) .ambient {
+  background:
+    radial-gradient(
+      62% 42% at 6% -4%,
+      rgba(10, 132, 255, 0.22),
+      rgba(10, 132, 255, 0.06) 45%,
+      transparent 72%
+    ),
+    radial-gradient(
+      54% 38% at 100% 20%,
+      rgba(191, 90, 242, 0.16),
+      transparent 70%
+    ),
+    #000000;
+}
+
 /* --------------------------------------------------------------------------
    Shell
    -------------------------------------------------------------------------- */
@@ -289,6 +312,9 @@ html[data-fx="full"] .orb-d { animation: drift-d 30s ease-in-out infinite altern
   -webkit-backdrop-filter: var(--glass-filter-strong);
   overflow: hidden;
   isolation: isolate;
+  /* Isolate the bar from the rest of the page: clock/status writes can't
+     invalidate the surrounding 1440×2560 layout. */
+  contain: layout style;
 }
 
 .topbar::after {
@@ -615,6 +641,9 @@ html[data-fx="full"] .orb-d { animation: drift-d 30s ease-in-out infinite altern
   -webkit-backdrop-filter: var(--glass-filter);
   overflow: hidden;
   isolation: isolate;
+  /* Gauges / network SVG tick every second: keep those invalidations inside
+     the card instead of relayouting the full page. */
+  contain: layout style;
 }
 
 .card::before {
@@ -760,16 +789,16 @@ html[data-fx="full"] .orb-d { animation: drift-d 30s ease-in-out infinite altern
   stroke-linecap: round;
   stroke-dasharray: 339.292;
   stroke-dashoffset: 339.292;
+  /* No filter here: an SVG drop-shadow forces the whole gauge card to
+     re-rasterise on every dashoffset tick (Mali-T760 killer). Glow is
+     re-added only for `html[data-fx="full"]`. */
   transition:
     stroke-dashoffset 0.85s var(--ease),
-    stroke 0.3s ease,
-    filter 0.3s ease;
-  filter: drop-shadow(0 0 6px var(--accent-soft));
+    stroke 0.3s ease;
 }
 
 .ring-progress.is-hot {
   stroke: var(--pink);
-  filter: drop-shadow(0 0 8px rgba(255, 55, 95, 0.45));
 }
 
 .gauge-center {
@@ -927,19 +956,21 @@ html[data-fx="full"] .orb-d { animation: drift-d 30s ease-in-out infinite altern
 .meter-fill {
   display: block;
   height: 100%;
-  width: 0;
+  width: 100%;
   border-radius: inherit;
-  transition: width 0.7s var(--ease);
+  /* Animate on the compositor: scaleX() never triggers layout (a `width`
+     transition re-lays-out the whole net card on every metrics tick). */
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.55s var(--ease);
 }
 
 .meter-fill.down {
   background: linear-gradient(90deg, rgba(100, 210, 255, 0.55), var(--cyan));
-  box-shadow: 0 0 8px rgba(100, 210, 255, 0.55);
 }
 
 .meter-fill.up {
   background: linear-gradient(90deg, rgba(191, 90, 242, 0.5), var(--violet));
-  box-shadow: 0 0 8px rgba(191, 90, 242, 0.5);
 }
 
 .chart {
@@ -973,12 +1004,10 @@ html[data-fx="full"] .orb-d { animation: drift-d 30s ease-in-out infinite altern
 
 .line.down {
   stroke: var(--cyan);
-  filter: drop-shadow(0 0 4px rgba(100, 210, 255, 0.45));
 }
 
 .line.up {
   stroke: var(--violet);
-  filter: drop-shadow(0 0 4px rgba(191, 90, 242, 0.4));
 }
 
 .area {
@@ -1074,6 +1103,8 @@ html[data-fx="full"] .orb-d { animation: drift-d 30s ease-in-out infinite altern
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: clamp(8px, 1.2vw, 13px);
+  /* Deck grid ("deck-grid"): key spans/label changes stay local. */
+  contain: layout style;
 }
 
 .key {
@@ -1109,6 +1140,8 @@ html[data-fx="full"] .orb-d { animation: drift-d 30s ease-in-out infinite altern
      triggers layout/paint. Cards stay unpromoted to keep VRAM low. */
   transform: translateZ(0);
   backface-visibility: hidden;
+  /* Deck key ("deck-key"): toggle/icon/label writes are fully isolated. */
+  contain: layout paint;
   transition:
     transform 0.15s var(--ease),
     border-color 0.18s ease,
@@ -3109,6 +3142,34 @@ body.is-sheet-open {
 /* --------------------------------------------------------------------------
    Performance tier (default) — keeps the compositor idle
    -------------------------------------------------------------------------- */
+
+/* SVG drop-shadows and meter glows are opt-in only. `filter: drop-shadow()`
+   on an SVG re-rasterises the entire layer whenever the path `d` or the
+   `stroke-dashoffset` changes — i.e. every metrics tick. Flat strokes cost
+   nothing on Mali-T760. */
+html[data-fx="full"] .ring-progress {
+  filter: drop-shadow(0 0 6px var(--accent-soft));
+}
+
+html[data-fx="full"] .ring-progress.is-hot {
+  filter: drop-shadow(0 0 8px rgba(255, 55, 95, 0.45));
+}
+
+html[data-fx="full"] .line.down {
+  filter: drop-shadow(0 0 4px rgba(100, 210, 255, 0.45));
+}
+
+html[data-fx="full"] .line.up {
+  filter: drop-shadow(0 0 4px rgba(191, 90, 242, 0.4));
+}
+
+html[data-fx="full"] .meter-fill.down {
+  box-shadow: 0 0 8px rgba(100, 210, 255, 0.55);
+}
+
+html[data-fx="full"] .meter-fill.up {
+  box-shadow: 0 0 8px rgba(191, 90, 242, 0.5);
+}
 
 /* Decorative glows and pulsing dots only animate in the full-effects tier. */
 html:not([data-fx="full"]) .conn-pill[data-state="live"] .status-dot,
