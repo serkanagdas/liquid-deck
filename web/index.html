@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="description" content="Liquid Deck — a live hardware dashboard and touch macro deck.">
+  <title>Liquid Deck</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="ambient" aria-hidden="true">
+    <span class="orb orb-a"></span>
+    <span class="orb orb-b"></span>
+    <span class="orb orb-c"></span>
+    <span class="orb orb-d"></span>
+    <span class="noise"></span>
+    <span class="vignette"></span>
+  </div>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="brand-copy">
+          <span class="eyebrow" id="brandHost">Hardware Dashboard</span>
+          <h1>Liquid Deck</h1>
+        </span>
+      </div>
+
+      <div class="clock" aria-label="Local time">
+        <span class="clock-time"><span id="clockTime">--:--</span><span class="clock-seconds" id="clockSeconds">00</span></span>
+        <span class="clock-date" id="clockDate">—</span>
+      </div>
+
+      <div class="status-cluster">
+        <div class="pill ping-pill" id="pingPill" data-quality="unknown" title="TCP latency">
+          <svg class="pill-icon" aria-hidden="true"><use href="#icon-activity"></use></svg>
+          <span class="pill-value" id="pingValue">--</span>
+          <span class="pill-unit">ms</span>
+        </div>
+        <div class="pill conn-pill" id="connPill" data-state="connecting">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="connLabel">Linking</span>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" aria-label="Live hardware metrics">
+        <article class="card gauge-card" data-accent="cyan">
+          <div class="card-head">
+            <span class="card-label">
+              <svg class="label-icon" aria-hidden="true"><use href="#icon-cpu"></use></svg>
+              CPU
+            </span>
+            <span class="chip">
+              <svg class="chip-icon" aria-hidden="true"><use href="#icon-thermometer"></use></svg>
+              <span id="cpuTemp">--°</span>
+            </span>
+          </div>
+
+          <div class="gauge">
+            <svg class="ring" viewBox="0 0 128 128" role="img" aria-label="CPU usage">
+              <defs>
+                <linearGradient id="cpuGradient" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#64d2ff"></stop>
+                  <stop offset="1" stop-color="#0a84ff"></stop>
+                </linearGradient>
+              </defs>
+              <circle class="ring-track" cx="64" cy="64" r="54"></circle>
+              <circle class="ring-progress" id="cpuRing" cx="64" cy="64" r="54" stroke="url(#cpuGradient)"></circle>
+            </svg>
+            <span class="gauge-center">
+              <span class="gauge-value" id="cpuValue">0</span><span class="gauge-unit">%</span>
+            </span>
+          </div>
+
+          <div class="card-foot">
+            <span id="cpuCores">— cores</span>
+            <span class="foot-sep" aria-hidden="true"></span>
+            <span id="cpuLoad">load —</span>
+          </div>
+        </article>
+
+        <article class="card gauge-card" data-accent="violet">
+          <div class="card-head">
+            <span class="card-label">
+              <svg class="label-icon" aria-hidden="true"><use href="#icon-memory"></use></svg>
+              Memory
+            </span>
+            <span class="chip" id="ramTotalChip">— GB</span>
+          </div>
+
+          <div class="gauge">
+            <svg class="ring" viewBox="0 0 128 128" role="img" aria-label="Memory usage">
+              <defs>
+                <linearGradient id="ramGradient" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#bf5af2"></stop>
+                  <stop offset="1" stop-color="#ff375f"></stop>
+                </linearGradient>
+              </defs>
+              <circle class="ring-track" cx="64" cy="64" r="54"></circle>
+              <circle class="ring-progress" id="ramRing" cx="64" cy="64" r="54" stroke="url(#ramGradient)"></circle>
+            </svg>
+            <span class="gauge-center">
+              <span class="gauge-value" id="ramValue">0</span><span class="gauge-unit">%</span>
+            </span>
+          </div>
+
+          <div class="card-foot">
+            <span id="ramUsed">used —</span>
+            <span class="foot-sep" aria-hidden="true"></span>
+            <span id="ramFree">free —</span>
+          </div>
+        </article>
+
+        <article class="card net-card">
+          <div class="card-head">
+            <span class="card-label">
+              <svg class="label-icon" aria-hidden="true"><use href="#icon-wifi"></use></svg>
+              Network
+            </span>
+            <span class="chip chip-mono" id="netIface">—</span>
+          </div>
+
+          <div class="net-grid">
+            <div class="net-stat">
+              <span class="net-head">
+                <span class="net-arrow down" aria-hidden="true"><svg><use href="#icon-arrow-down"></use></svg></span>
+                <span class="net-label">Download</span>
+              </span>
+              <span class="net-value"><span id="netDownValue">0</span><span class="net-unit" id="netDownUnit">B/s</span></span>
+              <span class="meter"><i class="meter-fill down" id="netDownBar"></i></span>
+            </div>
+
+            <div class="net-stat">
+              <span class="net-head">
+                <span class="net-arrow up" aria-hidden="true"><svg><use href="#icon-arrow-up"></use></svg></span>
+                <span class="net-label">Upload</span>
+              </span>
+              <span class="net-value"><span id="netUpValue">0</span><span class="net-unit" id="netUpUnit">B/s</span></span>
+              <span class="meter"><i class="meter-fill up" id="netUpBar"></i></span>
+            </div>
+          </div>
+
+          <div class="chart">
+            <svg id="netChart" viewBox="0 0 360 110" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="rxFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#64d2ff" stop-opacity=".42"></stop>
+                  <stop offset="1" stop-color="#64d2ff" stop-opacity="0"></stop>
+                </linearGradient>
+                <linearGradient id="txFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#bf5af2" stop-opacity=".36"></stop>
+                  <stop offset="1" stop-color="#bf5af2" stop-opacity="0"></stop>
+                </linearGradient>
+              </defs>
+              <path class="area down" id="rxArea" fill="url(#rxFill)"></path>
+              <path class="area up" id="txArea" fill="url(#txFill)"></path>
+              <path class="line down" id="rxLine"></path>
+              <path class="line up" id="txLine"></path>
+            </svg>
+            <div class="chart-legend">
+              <span class="legend down"><i aria-hidden="true"></i>Download</span>
+              <span class="legend up"><i aria-hidden="true"></i>Upload</span>
+              <span class="chart-peak" id="netPeak">peak —</span>
+            </div>
+          </div>
+
+          <div class="card-foot">
+            <span id="netTotal">—</span>
+          </div>
+        </article>
+      </section>
+
+      <section class="deck-section" aria-labelledby="deckTitle">
+        <div class="section-head">
+          <h2 id="deckTitle">Action Deck</h2>
+          <span class="section-note" id="deckNote">Tap to trigger · haptic feedback</span>
+        </div>
+
+        <div class="deck" id="deck">
+          <button class="key tone-orange" type="button" data-action="discord_mute" aria-pressed="false">
+            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-mic-off"></use></svg></span>
+            <span class="key-copy"><strong>Mic Mute</strong><small>Ctrl ⇧ M</small></span>
+            <span class="key-led" aria-hidden="true"></span>
+          </button>
+
+          <button class="key tone-violet" type="button" data-action="discord_deafen" aria-pressed="false">
+            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-headphones-off"></use></svg></span>
+            <span class="key-copy"><strong>Deafen</strong><small>Ctrl ⇧ D</small></span>
+            <span class="key-led" aria-hidden="true"></span>
+          </button>
+
+          <button class="key tone-blue" type="button" data-action="media" data-value="play_pause" aria-pressed="false">
+            <span class="key-icon" aria-hidden="true"><svg><use id="playIcon" href="#icon-pause"></use></svg></span>
+            <span class="key-copy"><strong>Play / Pause</strong><small id="playSub">Playing</small></span>
+            <span class="key-led" aria-hidden="true"></span>
+          </button>
+
+          <button class="key tone-cyan" type="button" data-action="media" data-value="next">
+            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-next"></use></svg></span>
+            <span class="key-copy"><strong>Next Track</strong><small>Skip forward</small></span>
+            <span class="key-led" aria-hidden="true"></span>
+          </button>
+
+          <button class="key tone-slate" type="button" data-action="volume" data-value="down">
+            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-volume-down"></use></svg></span>
+            <span class="key-copy"><strong>Volume Down</strong><small>−5%</small></span>
+            <span class="key-led" aria-hidden="true"></span>
+          </button>
+
+          <button class="key tone-slate" type="button" data-action="volume" data-value="up">
+            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-volume-up"></use></svg></span>
+            <span class="key-copy"><strong>Volume Up</strong><small>+5%</small></span>
+            <span class="key-led" aria-hidden="true"></span>
+          </button>
+
+          <button class="key tone-green" type="button" data-action="terminal">
+            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-terminal"></use></svg></span>
+            <span class="key-copy"><strong>Terminal</strong><small>Launch shell</small></span>
+            <span class="key-led" aria-hidden="true"></span>
+          </button>
+
+          <button class="key tone-pink" type="button" data-action="game_mode" aria-pressed="false">
+            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-gamepad"></use></svg></span>
+            <span class="key-copy"><strong>Game Mode</strong><small id="gameSub">Standby</small></span>
+            <span class="key-led" aria-hidden="true"></span>
+          </button>
+        </div>
+      </section>
+
+      <section class="card system-card" aria-labelledby="systemTitle">
+        <div class="system-head">
+          <div>
+            <span class="eyebrow">System</span>
+            <h2 id="systemTitle">Machine</h2>
+          </div>
+          <span class="chip chip-mono" id="deckVersion">v1.0.0</span>
+        </div>
+
+        <dl class="system-grid">
+          <div><dt>Host</dt><dd id="sysHost">—</dd></div>
+          <div><dt>Operating system</dt><dd id="sysOs">—</dd></div>
+          <div><dt>Uptime</dt><dd id="sysUptime">—</dd></div>
+          <div><dt>Load average</dt><dd id="sysLoad">—</dd></div>
+          <div><dt>TCP ping</dt><dd id="sysPing">—</dd></div>
+          <div><dt>Socket RTT</dt><dd id="sysRtt">—</dd></div>
+        </dl>
+      </section>
+    </main>
+
+    <footer>
+      <span>Liquid Deck · Rust core · 1 s telemetry</span>
+      <span class="footer-live"><i aria-hidden="true"></i>AMOLED glass</span>
+    </footer>
+  </div>
+
+  <div class="reconnect-banner" id="reconnectBanner" role="status">
+    <span class="spinner" aria-hidden="true"></span>
+    <span id="reconnectText">Connection lost — reconnecting…</span>
+  </div>
+
+  <div class="toast-stack" id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+  <div class="lock" id="lock" hidden>
+    <form class="lock-panel" id="lockForm">
+      <span class="lock-mark" aria-hidden="true"><svg><use href="#icon-lock"></use></svg></span>
+      <h2>Deck locked</h2>
+      <p>Enter the access token printed by the Liquid Deck server.</p>
+      <label class="sr-only" for="tokenInput">Access token</label>
+      <input id="tokenInput" name="token" type="password" placeholder="Access token"
+             autocomplete="current-password" spellcheck="false" autocapitalize="off">
+      <button class="lock-submit" type="submit">Unlock deck</button>
+      <p class="lock-error" id="lockError" role="alert" hidden></p>
+    </form>
+  </div>
+
+  <svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-cpu" viewBox="0 0 24 24">
+      <rect x="7" y="7" width="10" height="10" rx="2.2"></rect>
+      <path d="M9 2.5v3M15 2.5v3M9 18.5v3M15 18.5v3M2.5 9h3M2.5 15h3M18.5 9h3M18.5 15h3"></path>
+    </symbol>
+    <symbol id="icon-memory" viewBox="0 0 24 24">
+      <rect x="2.5" y="7" width="19" height="10" rx="2.4"></rect>
+      <path d="M7 10.5v3M11 10.5v3M15 10.5v3M19 10.5v3M7 17v3M12 17v3M17 17v3"></path>
+    </symbol>
+    <symbol id="icon-thermometer" viewBox="0 0 24 24">
+      <path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0Z"></path>
+      <path d="M12 9v6.2"></path>
+    </symbol>
+    <symbol id="icon-arrow-down" viewBox="0 0 24 24"><path d="M12 4v15M6 13.5l6 6 6-6"></path></symbol>
+    <symbol id="icon-arrow-up" viewBox="0 0 24 24"><path d="M12 20V5M6 10.5l6-6 6 6"></path></symbol>
+    <symbol id="icon-activity" viewBox="0 0 24 24"><path d="M2.5 12h4l2.7-7.5 4.1 15 2.7-7.5h5.5"></path></symbol>
+    <symbol id="icon-wifi" viewBox="0 0 24 24">
+      <path d="M4.5 12.2a11.5 11.5 0 0 1 15 0M8 15.8a6.5 6.5 0 0 1 8 0M12 19.8h.01"></path>
+    </symbol>
+    <symbol id="icon-mic-off" viewBox="0 0 24 24">
+      <path d="M9 9v3a3 3 0 0 0 4.6 2.6M15 9.3V5a3 3 0 0 0-5.7-1.3"></path>
+      <path d="M17.5 16.9A7 7 0 0 1 5 12v-2M12 19v3M8.5 22h7M2.5 2.5l19 19"></path>
+    </symbol>
+    <symbol id="icon-headphones-off" viewBox="0 0 24 24">
+      <path d="M3.5 14h2.8a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2v-7a8.5 8.5 0 0 1 17 0v7a2 2 0 0 1-2 2h-.8a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h2.8"></path>
+      <path d="M2.5 2.5l19 19"></path>
+    </symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="M7.5 4.2v15.6L20 12 7.5 4.2Z" fill="currentColor" stroke="none"></path></symbol>
+    <symbol id="icon-pause" viewBox="0 0 24 24">
+      <rect x="6" y="4" width="4.2" height="16" rx="1.4" fill="currentColor" stroke="none"></rect>
+      <rect x="13.8" y="4" width="4.2" height="16" rx="1.4" fill="currentColor" stroke="none"></rect>
+    </symbol>
+    <symbol id="icon-next" viewBox="0 0 24 24">
+      <path d="M5 4.5v15L15 12 5 4.5Z" fill="currentColor" stroke="none"></path>
+      <path d="M19 4v16"></path>
+    </symbol>
+    <symbol id="icon-volume-down" viewBox="0 0 24 24">
+      <path d="M11.5 4.8 6.5 8.7H3v6.6h3.5l5 3.9V4.8Z"></path>
+      <path d="M15.2 9.4a3.8 3.8 0 0 1 0 5.2"></path>
+    </symbol>
+    <symbol id="icon-volume-up" viewBox="0 0 24 24">
+      <path d="M11.5 4.8 6.5 8.7H3v6.6h3.5l5 3.9V4.8Z"></path>
+      <path d="M15.2 9.4a3.8 3.8 0 0 1 0 5.2M18.2 6.5a8 8 0 0 1 0 11"></path>
+    </symbol>
+    <symbol id="icon-terminal" viewBox="0 0 24 24">
+      <rect x="3" y="4" width="18" height="16" rx="3"></rect>
+      <path d="m7 9 3 3-3 3M13 15.2h4"></path>
+    </symbol>
+    <symbol id="icon-gamepad" viewBox="0 0 24 24">
+      <path d="M6.2 7.5h11.6a4 4 0 0 1 3.8 5.3l-1.2 3.8a3.2 3.2 0 0 1-5.4 1.2l-1.4-1.6H9.4L8 17.8a3.2 3.2 0 0 1-5.4-1.2l-1.2-3.8a4 4 0 0 1 3.8-5.3Z"></path>
+      <path d="M8 10.3v3M6.5 11.8h3M15.6 11.2h.01M18 13h.01"></path>
+    </symbol>
+    <symbol id="icon-lock" viewBox="0 0 24 24">
+      <rect x="4" y="10" width="16" height="11" rx="3"></rect>
+      <path d="M8 10V7a4 4 0 0 1 8 0v3M12 15v2"></path>
+    </symbol>
+    <symbol id="icon-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"></path></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m4 12.5 5 5L20 6.5"></path></symbol>
+    <symbol id="icon-alert" viewBox="0 0 24 24">
+      <path d="M12 3 2.5 20.5h19L12 3Z"></path>
+      <path d="M12 9v5M12 17.5h.01"></path>
+    </symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="m5 5 14 14M19 5 5 19"></path></symbol>
+  </svg>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

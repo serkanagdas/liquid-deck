@@ -1,0 +1,7 @@
+/target
+/dist
+/AppDir
+*.AppImage
+*.exe
+.DS_Store
+Thumbs.db

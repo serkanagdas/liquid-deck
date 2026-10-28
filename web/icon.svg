@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Liquid Deck">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071528"></stop>
+      <stop offset="0.52" stop-color="#05050a"></stop>
+      <stop offset="1" stop-color="#190a20"></stop>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#64d2ff"></stop>
+      <stop offset="0.55" stop-color="#bf5af2"></stop>
+      <stop offset="1" stop-color="#ff375f"></stop>
+    </linearGradient>
+    <radialGradient id="glowBlue" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#0a84ff" stop-opacity="0.45"></stop>
+      <stop offset="1" stop-color="#0a84ff" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id="glowViolet" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#bf5af2" stop-opacity="0.4"></stop>
+      <stop offset="1" stop-color="#bf5af2" stop-opacity="0"></stop>
+    </radialGradient>
+    <linearGradient id="tileBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8fe4ff"></stop>
+      <stop offset="1" stop-color="#0a84ff"></stop>
+    </linearGradient>
+    <linearGradient id="tileViolet" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e3b5ff"></stop>
+      <stop offset="1" stop-color="#b84df0"></stop>
+    </linearGradient>
+    <linearGradient id="tileCyan" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c5f4ff"></stop>
+      <stop offset="1" stop-color="#5ecbff"></stop>
+    </linearGradient>
+    <linearGradient id="tilePink" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff9db4"></stop>
+      <stop offset="1" stop-color="#ff375f"></stop>
+    </linearGradient>
+    <linearGradient id="specular" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"></stop>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"></stop>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="116" fill="#000000"></rect>
+  <rect x="5" y="5" width="502" height="502" rx="111" fill="url(#body)" stroke="url(#rim)" stroke-width="2"></rect>
+
+  <circle cx="120" cy="96" r="190" fill="url(#glowBlue)"></circle>
+  <circle cx="408" cy="430" r="205" fill="url(#glowViolet)"></circle>
+
+  <g stroke="#ffffff" stroke-opacity="0.35" stroke-width="2">
+    <rect x="96" y="96" width="132" height="132" rx="38" fill="url(#tileBlue)"></rect>
+    <rect x="284" y="96" width="132" height="132" rx="38" fill="url(#tileViolet)"></rect>
+    <rect x="96" y="284" width="132" height="132" rx="38" fill="url(#tileCyan)"></rect>
+    <rect x="284" y="284" width="132" height="132" rx="38" fill="url(#tilePink)"></rect>
+  </g>
+
+  <g fill="#ffffff" fill-opacity="0.2">
+    <rect x="102" y="102" width="120" height="58" rx="28"></rect>
+    <rect x="290" y="102" width="120" height="58" rx="28"></rect>
+    <rect x="102" y="290" width="120" height="58" rx="28"></rect>
+    <rect x="290" y="290" width="120" height="58" rx="28"></rect>
+  </g>
+
+  <rect x="8" y="8" width="496" height="190" rx="108" fill="url(#specular)"></rect>
+</svg>
