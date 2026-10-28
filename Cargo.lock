@@ -350,11 +350,15 @@ name = "liquid-deck"
 version = "1.0.0"
 dependencies = [
  "axum",
+ "base64",
+ "futures-util",
  "rust-embed",
  "serde",
  "serde_json",
+ "sha2",
  "sysinfo",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]

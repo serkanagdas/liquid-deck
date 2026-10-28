@@ -5,7 +5,11 @@
 //! metrics stream on the same port.
 
 mod actions;
+mod audio;
+mod deck;
 mod metrics;
+mod obs;
+mod sounds;
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -32,10 +36,12 @@ use axum::{
     Json, Router,
 };
 use rust_embed::RustEmbed;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::sync::{broadcast, mpsc, Mutex, Notify, RwLock};
 
 use actions::{ActionRequest, Executor};
+use deck::{DeckConfig, DeckState};
 use metrics::{HistoryPoint, Metrics, HISTORY_LEN, PING_NONE};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -51,6 +57,10 @@ struct Config {
     bind: SocketAddr,
     token: Option<String>,
     scripts_dir: Option<PathBuf>,
+    sounds_dir: Option<PathBuf>,
+    seed_sounds: bool,
+    deck_path: PathBuf,
+    state_path: PathBuf,
     ping_target: String,
     sample_ms: u64,
     idle_ms: u64,
@@ -59,6 +69,7 @@ struct Config {
 #[derive(Clone)]
 struct AppState {
     tx: broadcast::Sender<Arc<String>>,
+    events: broadcast::Sender<Arc<String>>,
     latest: Arc<RwLock<Option<Metrics>>>,
     history: Arc<Mutex<VecDeque<HistoryPoint>>>,
     clients: Arc<AtomicUsize>,
@@ -67,6 +78,8 @@ struct AppState {
     executor: Arc<Executor>,
     config: Arc<Config>,
     gate: Arc<Mutex<ActionGate>>,
+    deck: Arc<RwLock<DeckConfig>>,
+    deck_state: Arc<RwLock<DeckState>>,
 }
 
 impl AppState {
@@ -143,7 +156,26 @@ async fn run() -> Result<(), String> {
     let config = parse_config()?;
     let bind = config.bind;
 
+    let (deck_config, warning) = deck::load_or_default(&config.deck_path);
+    if let Some(error) = warning {
+        eprintln!("liquid-deck: ignoring {} ({error}); using built-in deck.", config.deck_path.display());
+    }
+    if !config.deck_path.exists() {
+        if let Err(error) = deck::save_config(&config.deck_path, &deck_config) {
+            eprintln!("liquid-deck: cannot create {}: {error}", config.deck_path.display());
+        }
+    }
+    let mut deck_state = deck::load_state(&config.state_path);
+    deck_state.retain_for(&deck_config);
+
+    if config.seed_sounds {
+        if let Some(dir) = config.sounds_dir.as_deref() {
+            let _ = sounds::install_defaults(dir);
+        }
+    }
+
     let (tx, _) = broadcast::channel::<Arc<String>>(8);
+    let (events, _) = broadcast::channel::<Arc<String>>(32);
     let latest = Arc::new(RwLock::new(None));
     let history = Arc::new(Mutex::new(VecDeque::with_capacity(HISTORY_LEN)));
     let clients = Arc::new(AtomicUsize::new(0));
@@ -151,16 +183,25 @@ async fn run() -> Result<(), String> {
     let wake = Arc::new(Notify::new());
     let ping_us = Arc::new(AtomicU32::new(PING_NONE));
 
+    let executor = Arc::new(Executor::new(
+        config.scripts_dir.clone(),
+        config.sounds_dir.clone(),
+        deck_config.settings.obs.clone(),
+    ));
+
     let state = AppState {
         tx: tx.clone(),
+        events,
         latest: latest.clone(),
         history: history.clone(),
         clients: clients.clone(),
         activity: activity.clone(),
         wake: wake.clone(),
-        executor: Arc::new(Executor::new(config.scripts_dir.clone())),
+        executor,
         config: Arc::new(config.clone()),
         gate: Arc::new(Mutex::new(ActionGate::new())),
+        deck: Arc::new(RwLock::new(deck_config)),
+        deck_state: Arc::new(RwLock::new(deck_state)),
     };
 
     metrics::spawn_sampler(
@@ -185,8 +226,15 @@ async fn run() -> Result<(), String> {
         .route("/api/metrics", get(metrics_handler))
         .route("/api/actions", get(actions_handler))
         .route("/api/action", post(action_handler))
+        .route("/api/config", get(config_handler).put(config_put_handler))
+        .route("/api/config/reset", post(config_reset_handler))
+        .route("/api/state", post(state_handler))
+        .route("/api/audio", get(audio_handler).post(audio_action_handler))
+        .route("/api/sounds", get(sounds_handler))
+        .route("/api/sound", get(sound_file_handler))
+        .route("/api/obs/test", post(obs_test_handler))
         .fallback(static_handler)
-        .layer(DefaultBodyLimit::max(16 * 1024))
+        .layer(DefaultBodyLimit::max(128 * 1024))
         .layer(middleware::from_fn(security_headers))
         .with_state(state);
 
@@ -305,6 +353,362 @@ async fn action_handler(
 }
 
 // ---------------------------------------------------------------------------
+// Deck configuration
+// ---------------------------------------------------------------------------
+
+async fn config_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if !state.authorized(&headers, query.get("token").map(String::as_str)) {
+        return unauthorized();
+    }
+
+    let config = state.deck.read().await.clone();
+    let deck_state = state.deck_state.read().await.clone();
+    Json(json!({
+        "ok": true,
+        "config": config,
+        "state": deck_state,
+        "sounds": sounds::list(state.config.sounds_dir.as_deref()),
+        "sounds_enabled": state.config.sounds_dir.is_some(),
+    }))
+    .into_response()
+}
+
+async fn config_put_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+    Json(mut config): Json<DeckConfig>,
+) -> Response {
+    if !state.authorized(&headers, query.get("token").map(String::as_str)) {
+        return unauthorized();
+    }
+
+    if let Err(error) = config.normalize() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "message": error })),
+        )
+            .into_response();
+    }
+
+    if let Err(error) = deck::save_config(&state.config.deck_path, &config) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "ok": false, "message": error })),
+        )
+            .into_response();
+    }
+
+    let mut state_payload = {
+        let mut current = state.deck_state.write().await;
+        current.retain_for(&config);
+        current.clone()
+    };
+    if !config
+        .boards
+        .iter()
+        .any(|board| board.id == state_payload.active_board)
+    {
+        state_payload.active_board = config.settings.default_board.clone();
+    }
+    let warning = deck::save_state(&state.config.state_path, &state_payload).err();
+
+    state.executor.set_obs(config.settings.obs.clone());
+    *state.deck.write().await = config.clone();
+    *state.deck_state.write().await = state_payload.clone();
+
+    publish(
+        &state,
+        json!({ "type": "config", "config": config, "state": state_payload }),
+    );
+
+    Json(json!({
+        "ok": true,
+        "config": config,
+        "state": state_payload,
+        "warning": warning,
+        "sounds": sounds::list(state.config.sounds_dir.as_deref()),
+    }))
+    .into_response()
+}
+
+async fn config_reset_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if !state.authorized(&headers, query.get("token").map(String::as_str)) {
+        return unauthorized();
+    }
+
+    let mut config = DeckConfig::default();
+    if let Err(error) = config.normalize() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "ok": false, "message": error })),
+        )
+            .into_response();
+    }
+    if let Err(error) = deck::save_config(&state.config.deck_path, &config) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "ok": false, "message": error })),
+        )
+            .into_response();
+    }
+
+    let fresh = DeckState {
+        active_board: config.settings.default_board.clone(),
+        ..DeckState::default()
+    };
+    let _ = deck::save_state(&state.config.state_path, &fresh);
+
+    state.executor.set_obs(config.settings.obs.clone());
+    *state.deck.write().await = config.clone();
+    *state.deck_state.write().await = fresh.clone();
+
+    publish(
+        &state,
+        json!({ "type": "config", "config": config, "state": fresh }),
+    );
+
+    Json(json!({
+        "ok": true,
+        "config": config,
+        "state": fresh,
+        "sounds": sounds::list(state.config.sounds_dir.as_deref()),
+    }))
+    .into_response()
+}
+
+#[derive(Debug, Deserialize)]
+struct StateUpdate {
+    #[serde(default)]
+    board: Option<String>,
+    #[serde(default)]
+    button: Option<String>,
+    #[serde(default)]
+    active: Option<bool>,
+    #[serde(default)]
+    active_board: Option<String>,
+}
+
+async fn state_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+    Json(update): Json<StateUpdate>,
+) -> Response {
+    if !state.authorized(&headers, query.get("token").map(String::as_str)) {
+        return unauthorized();
+    }
+
+    let config = state.deck.read().await.clone();
+    let mut current = state.deck_state.write().await;
+
+    if let Some(board) = update.active_board {
+        if !config.boards.iter().any(|candidate| candidate.id == board) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "ok": false, "message": "Unknown board." })),
+            )
+                .into_response();
+        }
+        current.active_board = board;
+        current.updated_at = now_secs();
+    } else {
+        let (Some(board), Some(button), Some(active)) =
+            (update.board, update.button, update.active)
+        else {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "ok": false,
+                    "message": "Send active_board, or board + button + active.",
+                })),
+            )
+                .into_response();
+        };
+
+        let known = config
+            .boards
+            .iter()
+            .find(|candidate| candidate.id == board)
+            .is_some_and(|candidate| {
+                candidate.buttons.iter().any(|entry| entry.id == button)
+            });
+        if !known {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "ok": false, "message": "Unknown button." })),
+            )
+                .into_response();
+        }
+        current.set(&board, &button, active);
+    }
+
+    let payload = current.clone();
+    drop(current);
+    let warning = deck::save_state(&state.config.state_path, &payload).err();
+    publish(&state, json!({ "type": "deck_state", "state": payload }));
+
+    Json(json!({ "ok": true, "state": payload, "warning": warning })).into_response()
+}
+
+// ---------------------------------------------------------------------------
+// Audio mixer, sounds and OBS
+// ---------------------------------------------------------------------------
+
+async fn audio_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if !state.authorized(&headers, query.get("token").map(String::as_str)) {
+        return unauthorized();
+    }
+    Json(audio::snapshot().await).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+struct AudioRequest {
+    #[serde(default)]
+    op: String,
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    value: Option<u8>,
+}
+
+async fn audio_action_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+    Json(request): Json<AudioRequest>,
+) -> Response {
+    if !state.authorized(&headers, query.get("token").map(String::as_str)) {
+        return unauthorized();
+    }
+
+    if !state.allow_action().await {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({ "ok": false, "message": "Action rate limit exceeded." })),
+        )
+            .into_response();
+    }
+
+    state.activity.store(now_secs(), Ordering::Relaxed);
+    match audio::apply(&request.op, &request.id, request.value).await {
+        Ok(message) => Json(json!({ "ok": true, "message": message })).into_response(),
+        Err(message) => Json(json!({ "ok": false, "message": message })).into_response(),
+    }
+}
+
+async fn sounds_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if !state.authorized(&headers, query.get("token").map(String::as_str)) {
+        return unauthorized();
+    }
+    Json(json!({
+        "ok": true,
+        "enabled": state.config.sounds_dir.is_some(),
+        "sounds": sounds::list(state.config.sounds_dir.as_deref()),
+    }))
+    .into_response()
+}
+
+async fn sound_file_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if !state.authorized(&headers, query.get("token").map(String::as_str)) {
+        return unauthorized();
+    }
+
+    let name = query.get("name").cloned().unwrap_or_default();
+    let path = match sounds::resolve(state.config.sounds_dir.as_deref(), &name) {
+        Ok(path) => path,
+        Err(error) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "ok": false, "message": error })),
+            )
+                .into_response()
+        }
+    };
+    let data = match tokio::fs::read(&path).await {
+        Ok(data) => data,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "ok": false, "message": error.to_string() })),
+            )
+                .into_response()
+        }
+    };
+
+    let length = data.len();
+    let mut response = Response::new(Body::from(data));
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(sounds::media_type(&path)),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(header::ACCEPT_RANGES, HeaderValue::from_static("none"));
+    if let Ok(value) = HeaderValue::from_str(&length.to_string()) {
+        headers.insert(header::CONTENT_LENGTH, value);
+    }
+    response
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct ObsTestRequest {
+    url: Option<String>,
+    password: Option<String>,
+}
+
+async fn obs_test_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+    Json(request): Json<ObsTestRequest>,
+) -> Response {
+    if !state.authorized(&headers, query.get("token").map(String::as_str)) {
+        return unauthorized();
+    }
+
+    let saved = state.deck.read().await.settings.obs.clone();
+    let settings = deck::ObsSettings {
+        url: request.url.unwrap_or(saved.url).trim().to_string(),
+        password: request.password.unwrap_or(saved.password),
+    };
+
+    if let Err(error) = deck::validate_ws_url(&settings.url) {
+        return Json(json!({ "ok": false, "message": error })).into_response();
+    }
+
+    match obs::execute(&settings, "test", "").await {
+        Ok(message) => Json(json!({ "ok": true, "message": message })).into_response(),
+        Err(message) => Json(json!({ "ok": false, "message": message })).into_response(),
+    }
+}
+
+fn publish(state: &AppState, value: Value) {
+    let _ = state.events.send(Arc::new(value.to_string()));
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket
 // ---------------------------------------------------------------------------
 
@@ -330,8 +734,11 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     let _guard = ClientGuard(state.clients.clone());
 
     let mut receiver = state.tx.subscribe();
+    let mut events = state.events.subscribe();
     let latest = state.latest.read().await.clone();
     let history: Vec<HistoryPoint> = state.history.lock().await.iter().cloned().collect();
+    let deck_config = state.deck.read().await.clone();
+    let deck_state = state.deck_state.read().await.clone();
 
     let hello = json!({
         "type": "hello",
@@ -344,6 +751,10 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
         "actions": actions::ACTION_CATALOG,
         "auth_required": state.config.token.is_some(),
         "scripts": state.config.scripts_dir.is_some(),
+        "sounds_enabled": state.config.sounds_dir.is_some(),
+        "sounds": sounds::list(state.config.sounds_dir.as_deref()),
+        "config": deck_config,
+        "state": deck_state,
     });
 
     if socket
@@ -390,6 +801,17 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
             Some(outgoing) = out_rx.recv() => {
                 if socket.send(Message::Text(outgoing.into())).await.is_err() {
                     break;
+                }
+            }
+            event = events.recv() => {
+                match event {
+                    Ok(payload) => {
+                        if socket.send(Message::Text(payload.as_str().into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(_) => break,
                 }
             }
             _ = heartbeat.tick() => {
@@ -609,8 +1031,8 @@ async fn security_headers(request: Request, next: Next) -> Response {
         "content-security-policy",
         HeaderValue::from_static(
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
-             img-src 'self' data:; connect-src 'self' ws: wss:; font-src 'self'; \
-             object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+             img-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; \
+             font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
         ),
     );
     if is_api {
@@ -681,6 +1103,10 @@ fn parse_config() -> Result<Config, String> {
         .unwrap_or(8787);
     let mut token = env::var("LIQUID_DECK_TOKEN").ok();
     let mut scripts = env::var("LIQUID_DECK_SCRIPTS").ok();
+    let mut data = env::var("LIQUID_DECK_DATA").ok();
+    let mut config_path = env::var("LIQUID_DECK_CONFIG").ok();
+    let mut sounds = env::var("LIQUID_DECK_SOUNDS").ok();
+    let mut no_sounds = false;
     let mut ping_target =
         env::var("LIQUID_DECK_PING_TARGET").unwrap_or_else(|_| "1.1.1.1:443".to_string());
     let sample_ms: u64 = env::var("LIQUID_DECK_INTERVAL_MS")
@@ -720,6 +1146,20 @@ fn parse_config() -> Result<Config, String> {
             "--scripts" => {
                 scripts = Some(args.next().ok_or("--scripts requires a directory")?);
             }
+            "--data" => {
+                data = Some(args.next().ok_or("--data requires a directory")?);
+            }
+            "--config" => {
+                config_path = Some(args.next().ok_or("--config requires a file")?);
+            }
+            "--sounds" => {
+                sounds = Some(args.next().ok_or("--sounds requires a directory")?);
+                no_sounds = false;
+            }
+            "--no-sounds" => {
+                no_sounds = true;
+                sounds = None;
+            }
             "--ping" => {
                 ping_target = args.next().ok_or("--ping requires host:port")?;
             }
@@ -744,6 +1184,34 @@ fn parse_config() -> Result<Config, String> {
         .filter(|value| !value.is_empty())
         .map(PathBuf::from);
 
+    let data_dir = data
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(deck::default_data_dir);
+
+    let deck_path = config_path
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| data_dir.join("boards.json"));
+
+    let state_path = deck_path
+        .parent()
+        .map(|parent| parent.join("state.json"))
+        .unwrap_or_else(|| data_dir.join("state.json"));
+
+    let explicit_sounds = sounds
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    let seed_sounds = !no_sounds && explicit_sounds.is_none();
+    let sounds_dir = if no_sounds {
+        None
+    } else {
+        Some(explicit_sounds.unwrap_or_else(|| data_dir.join("sounds")))
+    };
+
     let ping_target = if ping_target.contains(':') {
         ping_target
     } else {
@@ -754,6 +1222,10 @@ fn parse_config() -> Result<Config, String> {
         bind,
         token,
         scripts_dir,
+        sounds_dir,
+        seed_sounds,
+        deck_path,
+        state_path,
         ping_target,
         sample_ms: sample_ms.clamp(250, 10_000),
         idle_ms: idle_ms.clamp(1_000, 60_000),
@@ -775,6 +1247,10 @@ OPTIONS:
   --local             Shortcut for --bind 127.0.0.1
   --token <TOKEN>     Require this token for metrics, WebSocket and actions
   --scripts <DIR>     Enable script actions from this directory
+  --config <FILE>     Board layout file (default <data>/boards.json)
+  --data <DIR>        Data directory for config, state and sounds
+  --sounds <DIR>      Soundboard directory (default <data>/sounds)
+  --no-sounds         Disable the soundboard
   --ping <HOST:PORT>  TCP ping target (default 1.1.1.1:443)
   -h, --help          Show this help
   -V, --version       Show the version
@@ -782,13 +1258,15 @@ OPTIONS:
 ENVIRONMENT:
   LIQUID_DECK_BIND, LIQUID_DECK_PORT, LIQUID_DECK_TOKEN,
   LIQUID_DECK_SCRIPTS, LIQUID_DECK_PING_TARGET,
+  LIQUID_DECK_CONFIG, LIQUID_DECK_DATA, LIQUID_DECK_SOUNDS,
   LIQUID_DECK_INTERVAL_MS, LIQUID_DECK_IDLE_MS,
   LIQUID_DECK_LAUNCH_<TARGET>, LIQUID_DECK_GAME_MODE_ON,
   LIQUID_DECK_GAME_MODE_OFF
 
 EXAMPLES:
   liquid-deck --lan --token my-secret
-  liquid-deck --scripts ./scripts
+  liquid-deck --scripts ./scripts --sounds ~/Music/clips
+  liquid-deck --config ./boards.json
   curl -X POST localhost:8787/api/action \\
     -H 'content-type: application/json' \\
     -d '{{\"action\":\"media\",\"command\":\"play_pause\"}}'
@@ -825,6 +1303,15 @@ async fn print_banner(config: &Config, local: SocketAddr) {
             .unwrap_or_else(|| "disabled".to_string())
     );
     println!(
+        "  Sounds   {}",
+        config
+            .sounds_dir
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "disabled".to_string())
+    );
+    println!("  Config   {}", config.deck_path.display());
+    println!(
         "  Sampling {} ms active / {} ms idle · ping {}",
         config.sample_ms, config.idle_ms, config.ping_target
     );
@@ -832,7 +1319,7 @@ async fn print_banner(config: &Config, local: SocketAddr) {
     if !local.ip().is_loopback() && config.token.is_none() {
         eprintln!();
         eprintln!("  ⚠  This deck is reachable from the network without a token.");
-        eprintln!("     Anyone who can reach port {port} can trigger actions.");
+        eprintln!("     Anyone who can reach port {port} can trigger actions or edit boards.");
         eprintln!("     Restart with --token <secret> before using it on a LAN.");
     }
     println!();

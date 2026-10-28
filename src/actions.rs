@@ -10,11 +10,18 @@ use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
     process::Stdio,
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
 use tokio::{process::Command, time::timeout};
+
+use crate::{
+    audio,
+    deck::{self, ObsSettings},
+    obs, sounds,
+};
 
 /// Actions advertised to the frontend (`GET /api/actions`, WS `hello`).
 pub const ACTION_CATALOG: &[&str] = &[
@@ -28,6 +35,10 @@ pub const ACTION_CATALOG: &[&str] = &[
     "discord_deafen",
     "game_mode",
     "terminal",
+    "url",
+    "sound",
+    "obs",
+    "audio",
 ];
 
 #[derive(Debug, Clone, Deserialize)]
@@ -60,6 +71,26 @@ pub enum ActionRequest {
     },
     /// Alias for `launch: terminal`.
     Terminal,
+    /// Open an http(s) URL in the default browser.
+    Url { url: String },
+    /// Play a clip from the soundboard directory.
+    Sound { name: String },
+    /// Send one request to OBS over obs-websocket v5.
+    Obs {
+        #[serde(default)]
+        op: String,
+        #[serde(default)]
+        target: String,
+    },
+    /// Switch output devices or change mixer levels.
+    Audio {
+        #[serde(default)]
+        op: String,
+        #[serde(default)]
+        id: String,
+        #[serde(default)]
+        value: Option<u8>,
+    },
 }
 
 impl ActionRequest {
@@ -75,6 +106,10 @@ impl ActionRequest {
             Self::DiscordDeafen => "discord_deafen",
             Self::GameMode { .. } => "game_mode",
             Self::Terminal => "terminal",
+            Self::Url { .. } => "url",
+            Self::Sound { .. } => "sound",
+            Self::Obs { .. } => "obs",
+            Self::Audio { .. } => "audio",
         }
     }
 }
@@ -92,11 +127,28 @@ pub struct ActionOutcome {
 #[derive(Debug, Clone)]
 pub struct Executor {
     scripts_dir: Option<PathBuf>,
+    sounds_dir: Option<PathBuf>,
+    obs: Arc<RwLock<ObsSettings>>,
 }
 
 impl Executor {
-    pub fn new(scripts_dir: Option<PathBuf>) -> Self {
-        Self { scripts_dir }
+    pub fn new(
+        scripts_dir: Option<PathBuf>,
+        sounds_dir: Option<PathBuf>,
+        obs: ObsSettings,
+    ) -> Self {
+        Self {
+            scripts_dir,
+            sounds_dir,
+            obs: Arc::new(RwLock::new(obs)),
+        }
+    }
+
+    /// Keep the OBS credentials in sync when the editor saves a new config.
+    pub fn set_obs(&self, settings: ObsSettings) {
+        if let Ok(mut current) = self.obs.write() {
+            *current = settings;
+        }
     }
 
     pub async fn execute(&self, request: ActionRequest) -> ActionOutcome {
@@ -116,6 +168,19 @@ impl Executor {
             ActionRequest::DiscordMute => key_combo("ctrl+shift+m").await,
             ActionRequest::DiscordDeafen => key_combo("ctrl+shift+d").await,
             ActionRequest::GameMode { enabled } => game_mode(enabled).await,
+            ActionRequest::Url { url } => open_url(&url).await,
+            ActionRequest::Sound { name } => {
+                sounds::play(self.sounds_dir.as_deref(), &name).await
+            }
+            ActionRequest::Obs { op, target } => {
+                let settings = self
+                    .obs
+                    .read()
+                    .map(|settings| settings.clone())
+                    .unwrap_or_default();
+                obs::execute(&settings, &op, &target).await
+            }
+            ActionRequest::Audio { op, id, value } => audio::apply(&op, &id, value).await,
         };
 
         let duration_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
@@ -788,6 +853,30 @@ async fn platform_volume(direction: &str, step: u8) -> Result<String, String> {
     } else {
         Ok(format!("Volume {direction} {step}%"))
     }
+}
+
+#[cfg(target_os = "linux")]
+fn platform_open_url(url: &str) -> Result<(), String> {
+    spawn_detached("xdg-open", &[url])
+}
+
+#[cfg(target_os = "macos")]
+fn platform_open_url(url: &str) -> Result<(), String> {
+    spawn_detached("open", &[url])
+}
+
+#[cfg(target_os = "windows")]
+fn platform_open_url(url: &str) -> Result<(), String> {
+    // rundll32 takes the URL as a single argv element; no shell metacharacter
+    // interpretation, unlike `cmd /C start`.
+    spawn_detached("rundll32.exe", &["url.dll,FileProtocolHandler", url])
+}
+
+async fn open_url(url: &str) -> Result<String, String> {
+    let url = url.trim();
+    deck::validate_url(url)?;
+    platform_open_url(url)?;
+    Ok("URL opened".to_string())
 }
 
 async fn launch(target: &str) -> Result<String, String> {

@@ -184,58 +184,22 @@
       <section class="deck-section" aria-labelledby="deckTitle">
         <div class="section-head">
           <h2 id="deckTitle">Action Deck</h2>
-          <span class="section-note" id="deckNote">Tap to trigger · haptic feedback</span>
+          <span class="section-note" id="deckNote">Tap to trigger · long-press to edit</span>
         </div>
 
-        <div class="deck" id="deck">
-          <button class="key tone-orange" type="button" data-action="discord_mute" aria-pressed="false">
-            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-mic-off"></use></svg></span>
-            <span class="key-copy"><strong>Mic Mute</strong><small>Ctrl ⇧ M</small></span>
-            <span class="key-led" aria-hidden="true"></span>
-          </button>
-
-          <button class="key tone-violet" type="button" data-action="discord_deafen" aria-pressed="false">
-            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-headphones-off"></use></svg></span>
-            <span class="key-copy"><strong>Deafen</strong><small>Ctrl ⇧ D</small></span>
-            <span class="key-led" aria-hidden="true"></span>
-          </button>
-
-          <button class="key tone-blue" type="button" data-action="media" data-value="play_pause" aria-pressed="false">
-            <span class="key-icon" aria-hidden="true"><svg><use id="playIcon" href="#icon-pause"></use></svg></span>
-            <span class="key-copy"><strong>Play / Pause</strong><small id="playSub">Playing</small></span>
-            <span class="key-led" aria-hidden="true"></span>
-          </button>
-
-          <button class="key tone-cyan" type="button" data-action="media" data-value="next">
-            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-next"></use></svg></span>
-            <span class="key-copy"><strong>Next Track</strong><small>Skip forward</small></span>
-            <span class="key-led" aria-hidden="true"></span>
-          </button>
-
-          <button class="key tone-slate" type="button" data-action="volume" data-value="down">
-            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-volume-down"></use></svg></span>
-            <span class="key-copy"><strong>Volume Down</strong><small>−5%</small></span>
-            <span class="key-led" aria-hidden="true"></span>
-          </button>
-
-          <button class="key tone-slate" type="button" data-action="volume" data-value="up">
-            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-volume-up"></use></svg></span>
-            <span class="key-copy"><strong>Volume Up</strong><small>+5%</small></span>
-            <span class="key-led" aria-hidden="true"></span>
-          </button>
-
-          <button class="key tone-green" type="button" data-action="terminal">
-            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-terminal"></use></svg></span>
-            <span class="key-copy"><strong>Terminal</strong><small>Launch shell</small></span>
-            <span class="key-led" aria-hidden="true"></span>
-          </button>
-
-          <button class="key tone-pink" type="button" data-action="game_mode" aria-pressed="false">
-            <span class="key-icon" aria-hidden="true"><svg><use href="#icon-gamepad"></use></svg></span>
-            <span class="key-copy"><strong>Game Mode</strong><small id="gameSub">Standby</small></span>
-            <span class="key-led" aria-hidden="true"></span>
-          </button>
+        <div class="board-bar">
+          <div class="board-tabs" id="boardTabs" role="tablist" aria-label="Boards"></div>
+          <div class="board-tools">
+            <button class="icon-btn" id="audioBtn" type="button" aria-label="Audio mixer" title="Audio mixer">
+              <svg aria-hidden="true"><use href="#icon-speaker"></use></svg>
+            </button>
+            <button class="icon-btn" id="editBtn" type="button" aria-label="Customize deck" title="Customize deck">
+              <svg aria-hidden="true"><use href="#icon-sliders"></use></svg>
+            </button>
+          </div>
         </div>
+
+        <div class="deck" id="deck" role="tabpanel" aria-label="Action buttons"></div>
       </section>
 
       <section class="card system-card" aria-labelledby="systemTitle">
@@ -270,6 +234,61 @@
   </div>
 
   <div class="toast-stack" id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+  <div class="sheet" id="editorSheet" hidden>
+    <div class="sheet-backdrop" data-close="editor" aria-hidden="true"></div>
+    <section class="sheet-panel editor-panel" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
+      <header class="sheet-head">
+        <div class="sheet-title">
+          <span class="eyebrow">Deck configuration</span>
+          <h2 id="editorTitle">Customize</h2>
+        </div>
+        <div class="sheet-head-actions">
+          <span class="save-badge" id="dirtyBadge" hidden>Unsaved</span>
+          <button class="icon-btn" id="editorClose" type="button" aria-label="Close editor">
+            <svg aria-hidden="true"><use href="#icon-close"></use></svg>
+          </button>
+        </div>
+      </header>
+
+      <nav class="sheet-tabs" id="editorTabs" aria-label="Editor sections">
+        <button type="button" data-editor-tab="boards">Boards</button>
+        <button type="button" data-editor-tab="buttons">Buttons</button>
+        <button type="button" data-editor-tab="integrations">Integrations</button>
+        <button type="button" data-editor-tab="json">JSON</button>
+      </nav>
+
+      <div class="sheet-body" id="editorBody"></div>
+
+      <footer class="sheet-foot">
+        <button class="btn btn-danger-ghost" type="button" id="editorReset">Reset deck</button>
+        <span class="sheet-foot-spacer"></span>
+        <button class="btn btn-ghost" type="button" id="editorCancel">Cancel</button>
+        <button class="btn btn-primary" type="button" id="editorSave">Save deck</button>
+      </footer>
+    </section>
+  </div>
+
+  <div class="sheet" id="audioSheet" hidden>
+    <div class="sheet-backdrop" data-close="audio" aria-hidden="true"></div>
+    <section class="sheet-panel audio-panel" role="dialog" aria-modal="true" aria-labelledby="audioTitle">
+      <header class="sheet-head">
+        <div class="sheet-title">
+          <span class="eyebrow">System audio</span>
+          <h2 id="audioTitle">Mixer</h2>
+        </div>
+        <div class="sheet-head-actions">
+          <button class="icon-btn" id="audioRefresh" type="button" aria-label="Refresh audio devices">
+            <svg aria-hidden="true"><use href="#icon-refresh"></use></svg>
+          </button>
+          <button class="icon-btn" id="audioClose" type="button" aria-label="Close mixer">
+            <svg aria-hidden="true"><use href="#icon-close"></use></svg>
+          </button>
+        </div>
+      </header>
+      <div class="sheet-body" id="audioBody"></div>
+    </section>
+  </div>
 
   <div class="lock" id="lock" hidden>
     <form class="lock-panel" id="lockForm">
@@ -335,6 +354,106 @@
     <symbol id="icon-gamepad" viewBox="0 0 24 24">
       <path d="M6.2 7.5h11.6a4 4 0 0 1 3.8 5.3l-1.2 3.8a3.2 3.2 0 0 1-5.4 1.2l-1.4-1.6H9.4L8 17.8a3.2 3.2 0 0 1-5.4-1.2l-1.2-3.8a4 4 0 0 1 3.8-5.3Z"></path>
       <path d="M8 10.3v3M6.5 11.8h3M15.6 11.2h.01M18 13h.01"></path>
+    </symbol>
+    <symbol id="icon-mic" viewBox="0 0 24 24">
+      <rect x="9" y="2.5" width="6" height="11" rx="3"></rect>
+      <path d="M5.5 11.5V12a6.5 6.5 0 0 0 13 0v-.5M12 18.5V22M8.5 22h7"></path>
+    </symbol>
+    <symbol id="icon-headphones" viewBox="0 0 24 24">
+      <path d="M3.5 14h2.8a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2v-7a8.5 8.5 0 0 1 17 0v7a2 2 0 0 1-2 2h-.8a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h2.8"></path>
+    </symbol>
+    <symbol id="icon-volume-x" viewBox="0 0 24 24">
+      <path d="M11.5 4.8 6.5 8.7H3v6.6h3.5l5 3.9V4.8Z"></path>
+      <path d="m16 9.5 5 5M21 9.5l-5 5"></path>
+    </symbol>
+    <symbol id="icon-speaker" viewBox="0 0 24 24">
+      <path d="M11.5 4.8 6.5 8.7H3v6.6h3.5l5 3.9V4.8Z"></path>
+      <path d="M15.2 9.4a3.8 3.8 0 0 1 0 5.2M18.2 6.5a8 8 0 0 1 0 11"></path>
+    </symbol>
+    <symbol id="icon-record" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="7.5"></circle>
+      <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"></circle>
+    </symbol>
+    <symbol id="icon-stream" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="2.4"></circle>
+      <path d="M7.4 7.4a6.5 6.5 0 0 0 0 9.2M16.6 7.4a6.5 6.5 0 0 1 0 9.2M4.2 4.2a11 11 0 0 0 0 15.6M19.8 4.2a11 11 0 0 1 0 15.6"></path>
+    </symbol>
+    <symbol id="icon-camera" viewBox="0 0 24 24">
+      <rect x="3" y="6.5" width="13" height="11" rx="3"></rect>
+      <path d="m16 11 5-3v8l-5-3"></path>
+    </symbol>
+    <symbol id="icon-folder" viewBox="0 0 24 24">
+      <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2.5h7.5A2.5 2.5 0 0 1 21 10v7.5A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5Z"></path>
+    </symbol>
+    <symbol id="icon-globe" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.5"></circle>
+      <path d="M3.8 9.5h16.4M3.8 14.5h16.4M12 3.5c2.4 2.4 3.5 5.3 3.5 8.5S14.4 18.1 12 20.5C9.6 18.1 8.5 15.2 8.5 12S9.6 5.9 12 3.5Z"></path>
+    </symbol>
+    <symbol id="icon-chat" viewBox="0 0 24 24">
+      <path d="M20.5 11.5a8 8 0 0 1-8.2 8 9 9 0 0 1-3.6-.7L4 20.5l1.6-4.4a8 8 0 1 1 14.9-4.6Z"></path>
+      <path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01"></path>
+    </symbol>
+    <symbol id="icon-music" viewBox="0 0 24 24">
+      <path d="M9 18V5.5l10-2v12"></path>
+      <circle cx="6.5" cy="18" r="2.5"></circle>
+      <circle cx="16.5" cy="15.5" r="2.5"></circle>
+    </symbol>
+    <symbol id="icon-previous" viewBox="0 0 24 24">
+      <path d="M19 4.5v15L9 12l10-7.5Z" fill="currentColor" stroke="none"></path>
+      <path d="M5 4v16"></path>
+    </symbol>
+    <symbol id="icon-code" viewBox="0 0 24 24">
+      <path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"></path>
+    </symbol>
+    <symbol id="icon-grid" viewBox="0 0 24 24">
+      <rect x="3.5" y="3.5" width="7" height="7" rx="2"></rect>
+      <rect x="13.5" y="3.5" width="7" height="7" rx="2"></rect>
+      <rect x="3.5" y="13.5" width="7" height="7" rx="2"></rect>
+      <rect x="13.5" y="13.5" width="7" height="7" rx="2"></rect>
+    </symbol>
+    <symbol id="icon-sliders" viewBox="0 0 24 24">
+      <path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h9M17 17h3"></path>
+      <circle cx="15" cy="7" r="2"></circle>
+      <circle cx="9" cy="12" r="2"></circle>
+      <circle cx="15" cy="17" r="2"></circle>
+    </symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3.2"></circle>
+      <path d="M12 2.8v3M12 18.2v3M4.5 7.2l2.6 1.5M16.9 15.3l2.6 1.5M4.5 16.8l2.6-1.5M16.9 8.7l2.6-1.5"></path>
+    </symbol>
+    <symbol id="icon-sound" viewBox="0 0 24 24">
+      <path d="M3 12h2.2l1.8-5.5 2.7 11 2.3-8 1.7 2.5H21"></path>
+    </symbol>
+    <symbol id="icon-obs" viewBox="0 0 24 24">
+      <rect x="3" y="5.5" width="13.5" height="13" rx="3.2"></rect>
+      <path d="m16.5 10.5 4.5-2.5v8l-4.5-2.5M8 9.5h4"></path>
+    </symbol>
+    <symbol id="icon-github" viewBox="0 0 24 24">
+      <path d="M9.5 20c-4.5 1.5-4.5-2.6-6.5-3.1m13 6v-4.2c0-1.2.1-1.7-.6-2.4 3.2-.4 6.3-1.6 6.3-6.9a5.4 5.4 0 0 0-1.5-3.8 5 5 0 0 0-.1-3.8s-1.2-.4-4 1.5a13.8 13.8 0 0 0-7.2 0C6.1 1.4 4.9 1.8 4.9 1.8a5 5 0 0 0-.1 3.8A5.4 5.4 0 0 0 3.3 9.4c0 5.3 3.1 6.5 6.3 6.9-.5.5-.6 1.2-.6 2.4V22"></path>
+    </symbol>
+    <symbol id="icon-book" viewBox="0 0 24 24">
+      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v18H6.5A2.5 2.5 0 0 1 4 18.5Z"></path>
+      <path d="M4 17h16M8 7h8M8 10.5h6"></path>
+    </symbol>
+    <symbol id="icon-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"></path></symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></symbol>
+    <symbol id="icon-trash" viewBox="0 0 24 24">
+      <path d="M4 6.5h16M9.5 6.5V4h5v2.5M6.5 6.5l.9 14h9.2l.9-14M10 10.5v6M14 10.5v6"></path>
+    </symbol>
+    <symbol id="icon-edit" viewBox="0 0 24 24">
+      <path d="M4 20h4.5L20 8.5a2.1 2.1 0 0 0-3-3L5.5 17 4 20Z"></path>
+      <path d="m14.5 7 3 3"></path>
+    </symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24">
+      <rect x="8.5" y="8.5" width="12" height="12" rx="3"></rect>
+      <path d="M15.5 8.5v-2a3 3 0 0 0-3-3h-6a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h2"></path>
+    </symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24">
+      <path d="M20 11.5a8 8 0 1 0-.8 4.5M20 5v6.5h-6.5"></path>
+    </symbol>
+    <symbol id="icon-play-circle" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.5"></circle>
+      <path d="M10 8.5v7l6-3.5-6-3.5Z" fill="currentColor" stroke="none"></path>
     </symbol>
     <symbol id="icon-lock" viewBox="0 0 24 24">
       <rect x="4" y="10" width="16" height="11" rx="3"></rect>

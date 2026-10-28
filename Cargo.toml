@@ -18,12 +18,17 @@ path = "src/main.rs"
 # HTTP + WebSocket. No TLS stack: run behind a reverse proxy for HTTPS.
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "ws"] }
 # Single-threaded runtime keeps the idle footprint tiny.
-tokio = { version = "1", default-features = false, features = ["rt", "net", "time", "sync", "process", "macros", "io-util", "signal"] }
+tokio = { version = "1", default-features = false, features = ["rt", "net", "time", "sync", "process", "macros", "io-util", "signal", "fs"] }
 # Only the subsystems we actually use.
 sysinfo = { version = "0.39", default-features = false, features = ["system", "network", "component"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rust-embed = { version = "8", default-features = false }
+# obs-websocket v5 (OBS Studio) client: WebSocket + SHA-256 auth.
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "handshake"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+sha2 = "0.11"
+base64 = "0.22"
 
 [profile.release]
 opt-level = "z"     # optimise for size
