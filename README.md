@@ -18,6 +18,7 @@ Liquid Deck runs on the machine you want to monitor, serves an embedded dashboar
 
 ## Contents
 
+- [Kokpit Geliştirme Kılavuzu (Developer Guide)](#-kokpit-geliştirme-kılavuzu--developer-guide)
 - [Architecture](#architecture)
 - [Requirements](#requirements)
 - [Build](#build)
@@ -29,10 +30,74 @@ Liquid Deck runs on the machine you want to monitor, serves an embedded dashboar
 - [Deployment](#deployment)
 - [Security](#security)
 - [CI and release artifacts](#ci-and-release-artifacts)
-- [Performance](#performance)
+- [Performance & Thermal Overhaul](#performance--thermal-overhaul)
 - [Troubleshooting](#troubleshooting)
 - [Project layout](#project-layout)
 - [License](#license)
+
+---
+
+## 🛠 Kokpit Geliştirme Kılavuzu / Developer Guide
+
+Bu proje, masaüstü kokpitinde tek bir komutla ayağa kaldırılabilen ve eski telefon/tabletleri (özellikle Samsung Galaxy Note 4) **Deckboard benzeri tam teşekküllü bir donanım & makro paneline** dönüştüren ultra hafif bir çözümdür.
+
+### 1. Kendi Bilgisayarında (Kokpitinde) Başlangıç
+
+```bash
+# Repoyu çek
+git clone https://github.com/serkanagdas/liquid-deck.git
+cd liquid-deck
+
+# Geliştirme modunda çalıştır (yerel test için)
+cargo run
+
+# LAN üzerinden telefonun erişimine açmak için (token korumasıyla)
+cargo run -- --lan --token "gizli-sifreniz"
+```
+
+Web panelini tarayıcında aç:
+👉 `http://127.0.0.1:8787/?token=gizli-sifreniz`
+
+### 2. Frontend Geliştirmesi Nasıl Çalışır?
+
+- Arayüz (`web/index.html`, `web/style.css`, `web/app.js`), `rust-embed` kütüphanesi sayesinde derleme anında doğrudan Rust binary'sinin içine gömülür.
+- `web/` klasöründeki dosyaları değiştirdiğinde `cargo run` veya `cargo build` yapman yeterlidir; harici bir `npm run build` veya Node.js adımı **yoktur**.
+- Tüm arayüz **saf Vanilla JavaScript** ve **sıfır harici kütüphane** ile yazılmıştır; harici CDN veya internet bağlantısı gerektirmez.
+
+### 3. Yeni Buton ve Eylemler (Action) Ekleme
+
+- Yeni bir sistem komutu veya eylem türü eklemek istersen:
+  1. `src/actions.rs` dosyasında `Action` enum'ına yeni eylemini ekle ve `execute()` fonksiyonuna Linux, Windows ve macOS için çalışacak komutu yaz.
+  2. `web/app.js` içerisindeki `ACTIONS` listesine eylemin adını tanımla.
+  3. Buton tasarımlarını tarayıcıda canlı olarak paneldeki **Sliders (Özelleştir)** menüsünden veya `boards.json` dosyasından görsel olarak yapılandırabilirsin.
+
+### 4. Galaxy Note 4 (Masandaki Panel) ile Bağlantı
+
+Note 4 cihazına Wi-Fi ADB üzerinden tek komutla bağlanıp port yönlendirmesi yapabilirsin:
+
+```bash
+# 1. Wi-Fi ADB ile Note 4'e bağlan
+adb connect 192.168.1.101:5555
+
+# 2. Portu yönlendir (Note 4'teki 8787 portu bilgisayarındaki 8787 portuna bağlanır)
+adb reverse tcp:8787 tcp:8787
+
+# 3. Note 4'te Via Browser veya Chrome üzerinden aç:
+adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
+```
+
+### 5. Neler Yaptık? (Deckboard Paritesi & Termal Overhaul)
+
+- **Deckboard Paritesi:**
+  - Çoklu pano (Multi-board) geçişi ve iç içe pano navigasyonu.
+  - OBS Studio WebSocket v5 entegrasyonu (kayıt başlat/durdur, sahne değiştir, ses sustur).
+  - Soundboard (özel ses efektlerini tuşa basarak çalma).
+  - Sistem Ses Mikseri (PulseAudio/PipeWire çıkış cihazı seçimi ve uygulama bazlı ses ayarları).
+  - Canlı Donanım Telemetrisi: CPU, RAM, Anlık Ağ Grafiği, TCP Ping Gecikmesi, Sıcaklık.
+- **Ultra Düşük Güç & Termal Optimizasyon:**
+  - Note 4'ün 1440x2560 2K AMOLED ekranında GPU'yu kitleyen tüm CSS gradyanları ve sürekli çalışan 60 FPS geçişler (`transition`) kaldırıldı.
+  - Tamamen saf `#000000` AMOLED siyahına ve düz kart renklerine geçildi; işlemci sıcaklığı **98°C'den 47°C'ye** indirildi, pil tüketimi minimuma çekildi.
+  - Güncelleme aralığı 2 saniyeye çekilerek cihazın iki telemetri arasında derin uykuya geçmesi sağlandı.
 
 ---
 
