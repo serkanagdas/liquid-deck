@@ -1,0 +1,87 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Liquid Deck local-history tests</title>
+<pre id="result">RUNNING</pre>
+<script src="../web/history.js"></script>
+<script>
+window.historyTestDone = (async () => {
+  const result = document.getElementById("result");
+  let passed = 0;
+  const assert = (condition, message) => { if (!condition) throw new Error(message); passed++; };
+  const { summarize, pingDelta, MinuteLog, DAY } = LiquidHistory;
+  try {
+    assert(pingDelta(10, 1000, 70, 6000) === 60, "New probes produce a real delta");
+    assert(pingDelta(10, 1000, 70, 1000) === null, "Repeated probes must not produce jitter");
+    assert(pingDelta(10, 1000, 70, 30000) === null, "Resume after a gap must reset jitter baseline");
+    assert(pingDelta(10, 1000, null, 6000) === null, "Unreachable target is not zero ping");
+    const stats = summarize(null, [
+      { ts: 1, cpu: 10, temp: null, ping: 10, ping_ts: 1 },
+      { ts: 2, cpu: 90, temp: 70, ping: 10, ping_ts: 1 },
+      { ts: 2, cpu: 100, temp: 999, ping: 99, ping_ts: 1 },
+      { ts: 3, cpu: 50, temp: NaN, ping: 50, ping_ts: 2, jitter: 40, alert: true, received: 123 },
+    ]);
+    assert(stats.samples === 3, "Duplicate telemetry timestamps must be ignored");
+    assert(stats.values.cpu.min === 10 && stats.values.cpu.max === 90, "Peaks must survive aggregation");
+    assert(stats.values.cpu.sum / stats.values.cpu.n === 50, "Mean must be correct");
+    assert(stats.values.temp.n === 1 && stats.values.temp.min === 70, "Null/NaN sensors must not become zero");
+    assert(stats.values.ping.n === 2, "Repeated TCP probe must not be counted again");
+    assert(stats.events.length === 1 && stats.events[0].delta === 40, "Spike event must persist");
+    const noSensor = summarize(null, [{ ts: 1, temp: null, ping: null, jitter: null }]);
+    assert(!noSensor.values.temp && !noSensor.values.ping && !noSensor.values.jitter, "Missing data stays missing");
+
+    // File-origin test database, isolated from the app's HTTP origin.
+    await new Promise((resolve, reject) => { const r = indexedDB.deleteDatabase("liquid-deck-telemetry"); r.onsuccess = resolve; r.onerror = () => reject(r.error); });
+    const log = new MinuteLog();
+    const db = await log.db;
+    log.ingest({ ts: 100, host: "test", cpu: 30, temp: null, ping: 9, ping_ts: 100, gpu: { usage: 0, temp: 45, memory_pct: 12.5, power_watts: 17.3, clock_mhz: 210 } }, null, false, true);
+    await log.flush();
+    let rows = await log.read("test");
+    assert(rows.length === 1 && rows[0].samples === 1, "IndexedDB flush/read round-trip");
+    assert(!rows[0].values.temp, "Missing sensor remains absent on disk");
+    assert(rows[0].values.gpu_usage.min === 0, "Real zero-percent GPU usage must remain zero");
+    assert(rows[0].values.gpu_temp.max === 45, "Nested GPU temperature must persist");
+    assert(rows[0].values.gpu_memory_pct.sum === 12.5 && rows[0].values.gpu_power_watts.sum === 17.3, "GPU VRAM and power must persist");
+    // Simulate a second tab writing the same timestamp, then a fresh one.
+    const second = new MinuteLog();
+    second.ingest({ ts: 100, host: "test", cpu: 30, ping: 9, ping_ts: 100 }, null, false, true);
+    second.ingest({ ts: 101, host: "test", cpu: 70, ping: 9, ping_ts: 100 }, null, false, false);
+    await second.flush();
+    rows = await log.read("test");
+    assert(rows[0].samples === 2 && rows[0].values.cpu.sum === 100, "Multiple writers merge without double counting");
+    assert(rows[0].values.ping.n === 1, "Cached ping isn't a new probe");
+    assert(rows[0].values.gpu_temp.n === 1, "Missing GPU on an older client must not add fake zero samples");
+
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("minutes", "readwrite");
+      tx.objectStore("minutes").put({ source: "test", minute: Date.now() - DAY - 120000, samples: 1, values: {}, events: [] });
+      tx.oncomplete = resolve; tx.onabort = () => reject(tx.error);
+    });
+    log.ingest({ ts: 102, host: "test", cpu: 50 }, null, false, false);
+    await log.flush();
+    const total = await new Promise((resolve, reject) => {
+      const r = db.transaction("minutes", "readonly").objectStore("minutes").count();
+      r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
+    });
+    assert(total === 1, "Expired rows must be physically removed during writes");
+    const other = new MinuteLog();
+    other.ingest({ ts: 1, host: "other", cpu: 15 }, null, false, false);
+    await other.flush();
+    await log.clear("test");
+    assert((await log.read("test")).length === 0, "Clear removes the selected host");
+    assert((await log.read("other")).length === 1, "Clear must preserve other hosts");
+    const dateNow = Date.now;
+    const minuteNow = Math.floor(dateNow() / 60000) * 60000;
+    try {
+      Date.now = () => minuteNow;
+      log.ingest({ ts: 500, host: "rollover", cpu: 12 }, null, false, false);
+      Date.now = () => minuteNow + 60000;
+      log.ingest({ ts: 501, host: "rollover", cpu: 45 }, null, false, false);
+      await log.flush();
+      assert((await log.read("rollover")).length === 2, "Crossing a minute flushes two independent buckets");
+    } finally { Date.now = dateNow; }
+    db.close(); (await second.db).close(); (await other.db).close();
+    await new Promise((resolve) => { const r = indexedDB.deleteDatabase("liquid-deck-telemetry"); r.onsuccess = resolve; r.onerror = resolve; });
+    result.textContent = `PASS: ${passed} assertions (aggregation, duplicate probes, persistence, multiple writers, retention, host isolation)`;
+  } catch (error) { result.textContent = `FAIL after ${passed} assertions: ${error.stack || error}`; }
+})();
+</script>

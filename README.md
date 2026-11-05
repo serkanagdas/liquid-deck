@@ -139,7 +139,9 @@ adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
 | File | Responsibility |
 | --- | --- |
 | `src/main.rs` | CLI/env configuration, axum routes, WebSocket loop, token auth, rate limiting, security headers, static asset serving, graceful shutdown. |
-| `src/metrics.rs` | Adaptive `sysinfo` sampler, 60-point history ring, network rate calculation, hottest thermal sensor, TCP ping task. |
+| `src/metrics.rs` | Adaptive `sysinfo` sampler, 60-point history ring, network rate calculation, CPU temperature, TCP ping task. |
+| `src/cpu_temp.rs` | Read-only Zen 4 PawnIO sensor helper and validated, session-local shared-memory reader. |
+| `src/startup.rs` | Per-user Windows logon startup, single tray instance, ADB path discovery and CPU helper task launch. |
 | `src/actions.rs` | Action enum, validation, platform backends, script confinement, process timeouts, unit tests. |
 | `src/deck.rs` | `boards.json` model, defaults, normalisation/validation, atomic persistence, `state.json` toggle store. |
 | `src/audio.rs` | Audio output/app mixer via `pactl` on Linux, `SwitchAudioSource` + AppleScript on macOS. |
@@ -147,7 +149,7 @@ adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
 | `src/sounds.rs` | Sound library discovery, path confinement, built-in clips and platform playback. |
 | `web/index.html` | Dashboard markup, board switcher, editor/mixer sheets, SVG icon sprite, accessible controls. |
 | `web/style.css` | Liquid Glass design system, AMOLED palette, ambient glow, board/editor/mixer sheets, responsive layout. |
-| `web/app.js` | WebSocket client, reconnect/backoff, polling fallback, gauges, configurable boards, action deck, editor, mixer, toasts, lock screen. |
+| `web/app.js` | WebSocket client, reconnect/backoff, polling fallback, large hardware readouts, configurable boards, action deck, editor, mixer, toasts, lock screen. |
 | `web/icon.svg`, `web/icon-*.png`, `web/noise.png` | Embedded icons and grain texture. |
 | `web/manifest.webmanifest` | Installable PWA metadata. |
 | `integrations/note4-panel.sh` | Optional ADB helper for waking/sleeping a Galaxy Note 4 panel. |
@@ -166,7 +168,7 @@ adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
 
 - On load, the UI reads `/api/health`, restores a token from `localStorage` or `?token=`, and verifies it with `/api/auth` when authentication is enabled. It also fetches `/api/config` so the deck is usable before the WebSocket connects.
 - It opens `ws://host/ws` (or `wss://` on HTTPS). The first message is `hello`, containing the server version, host, OS, action catalog, current history, the full deck configuration, toggle state and sound library.
-- Every `metrics` message updates the CPU/RAM rings, network rates, SVG chart, ping pill, clock, load and uptime.
+- Every `metrics` message updates large CPU/GPU temperature and utilization readouts, compact RAM/network figures, ping, load and uptime. There is no live ring or network chart rendering; history charts are drawn only on demand.
 - Board tabs switch pages without reloading. Long-press a key (or use the sliders button) to open the editor; edits are staged in a draft and saved with `PUT /api/config`.
 - Toggle buttons persist on/off state in `state.json` through `POST /api/state`. Configuration and state changes are broadcast to every connected client.
 - If the WebSocket closes, the client reconnects with exponential backoff (450 ms → 10 s, plus jitter) and polls `/api/metrics` every 2 seconds in the meantime.
@@ -214,7 +216,7 @@ Wayland compositors may block synthetic input. `wtype` works on wlroots-based co
 
 - **Visual Studio Build Tools** with the “Desktop development with C++” workload (MSVC linker).
 - PowerShell 5.1+ (built in) for key, media and volume actions.
-- No extra runtime dependencies.
+- The core server has no extra runtime dependencies. Optional Note 4 integration needs ADB; the optional native Zen 4 CPU temperature helper needs an already-installed PawnIO driver and one-time administrator-approved setup.
 
 ### macOS
 
@@ -368,6 +370,25 @@ http://192.168.1.50:8787/?token=my-secret
 ---
 
 ## Configuration
+
+### Phone-local history and lightweight glass
+
+- **Interactive detail sheets:** the CPU and GPU cards and the bottom network strip open a detail dialog on tap. CPU: temperature, package power, per-thread usage bars, every connected fan header, load average and uptime. GPU: temperature, usage, VRAM, graphics and memory clocks, power with limit, fan and P-state. Network: a throughput chart drawn only while the sheet is open (fed by the existing 2-second stream, no extra sampling), current rates, totals, ping and probe target. Keyboard focus and Enter/Space work; the dialog closes on its button or Escape.
+- **Fan speeds:** motherboard fan headers are read from the SuperIO chip by the elevated helper through the signed LpcIO PawnIO module (Nuvoton NCT67xx classic and NCT668x banked families, ITE IT87xx). Header 0 is shown as the CPU fan under the usage number; stopped fans show 0 RPM, unconnected headers are hidden. GPU fan uses NVML's RPM call when the installed driver exposes it and falls back to the percentage when it does not.
+- **CPU package power** comes from the MSR energy counter (MSRC001_029B with the MSRC001_0299 unit), computed by the helper over measured sample time; shown in the CPU sheet.
+- **Design overhaul (unslop method):** neutral surfaces with hairlines, sentence-case labels, one accent per card (CPU orange, GPU green), 4 px spacing grid, weights 400-500, tabular figures, single Turkish wording. The large numbers and the provenance line stay the only strong elements; no blur or looping animation was added.
+- **Distance-first system screen:** CPU and GPU each occupy a main card with large, high-contrast temperature and utilization numbers. The large layout uses roughly 98 px temperature digits on the Note 4's landscape viewport; temperature colors still follow their existing thresholds. RAM is a compact percentage/used-total item in the bottom bar, not a large ring card. Portrait stacks the two hardware cards; landscape puts CPU first on the left, GPU on the right. Live rings and the VRAM fill meter have been removed; sensor sampling, history, startup and automatic phone connection are unchanged.
+- The former network card is now a detailed **NVIDIA GPU** card (model, utilization, temperature, VRAM, graphics clock, power/limit and fan). **Download / Upload / TCP Ping** remain in the bottom bar on both dashboard pages. The live network graph has been removed; optional 24-hour history graphs remain available.
+- On Windows, NVIDIA telemetry dynamically loads the installed driver's `System32/nvml.dll`, reads GPU index 0 on the existing sampling interval, and makes no GPU queries while the panel is idle. No `nvidia-smi` process, new timer, bundled driver library or additional crate is required. Unsupported individual measurements stay null. Other GPU vendors/platforms are not supported yet. Set `LIQUID_DECK_GPU=off` to disable NVML entirely (useful for hybrid laptops where monitoring may keep a discrete GPU awake).
+- GPU utilization, temperature, VRAM percentage, power and graphics clock are also included in phone-local history without changing or deleting existing records.
+- The dashboard has **System / Action Deck** pages, with horizontal swipes or navigation buttons. Large custom decks scroll inside their own panel, not the whole page. Swiping over an action key cancels the action and long-press.
+- **Ayarlar** selects **Hafif Cam / Tasarruf** and **Normal / Büyük**, toggles recording and sets a 15/30/60 ms ping-difference alert threshold. Settings belong to each browser, not the server deck configuration.
+- Lightweight glass uses static gradients, inset highlights and dark AMOLED surfaces. There is no backdrop blur, continuous animation or extra render loop. Hidden tabs skip metric painting while retaining received samples when Android permits it.
+- **24 saat** opens browser-local IndexedDB history: one-minute count/sum/min/max summaries for CPU, CPU temperature, RAM, GPU, network rates, TCP ping and successive TCP-probe differences. The history graph groups these into at most 288 five-minute points and is drawn only when opened or changed. Missing sensors remain missing, not zero.
+- Writes normally occur on minute rollover; opening history or hiding/leaving the page also attempts a flush. The in-progress minute can be lost if Android terminates the browser. Records older than 24 hours are removed during writes and excluded from reads. Duplicate timestamps from multiple tabs are ignored transactionally.
+- There are no server-side history files or additional sampling requests. Each browser/origin has its own history; viewing on a PC records in that PC's browser, viewing on the Note 4 records on the phone. Clearing site data removes it. Closing/suspending the browser creates gaps; there is no server backfill. JSON export and per-host deletion are available.
+- Ping differences use only fresh TCP probes (`ping_ts`), reset after long gaps and rate-limit alert events to one per minute. This is not game/UDP jitter or packet-loss measurement. The bottom bar shows only download/upload/ping; the extra quality row was removed to leave room for deck buttons. Jitter history and the alert border remain, and the probe target is available in the bar's tooltip.
+- Browser tests (Microsoft Edge on Windows): `powershell -ExecutionPolicy Bypass -File tests/run-browser-tests.ps1`. These use an isolated temporary browser profile, not the live panel's database.
 
 Command-line flags override environment variables, which override defaults.
 
@@ -1107,7 +1128,14 @@ The systemd unit above is the recommended setup. For a rootless user service, pu
 ### Windows
 
 - Run the release `.exe` from a terminal, or create a shortcut with `--lan --token ...`.
-- To start at logon, use Task Scheduler with a PowerShell wrapper like the one above.
+- **Automatic startup:** the tray's **Windows ile Başlat** checkbox or `liquid-deck.exe --enable-startup` registers this exact executable and its arguments in this user's `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. No elevation is required. `--disable-startup` removes only Liquid Deck's entry. This starts at **user logon**, not before login. Moving/deleting the executable requires re-enabling startup from its new location. Only one tray instance is allowed per interactive session.
+- **Automatic Note 4 connection:** each normal tray launch waits until the server listener is ready, then attempts ADB connection/reverse/wake/Via launch. Network boot delays are covered by five attempts (delays 0/5/10/20/40 seconds, each attempt limited to 20 seconds). Success stops all retries; after failure, use **Note 4’e Bağlan** to retry manually. Automatic failures never open blocking error dialogs. The tray tooltip shows connection status. ADB is resolved from PATH, Android SDK locations and WinGet Platform-Tools even when the startup PATH is incomplete. `LIQUID_DECK_ADB` can specify an absolute ADB path, `LIQUID_DECK_ADB_TARGET` overrides the phone address, and `LIQUID_DECK_AUTO_CONNECT=off` opts out. This cannot enable Wi-Fi ADB on a phone whose ADB daemon is disabled after its own reboot; that still requires the phone's debugging setup.
+- **Optional Ryzen CPU temperature:** on this Zen 4 Raphael machine, a tiny read-only helper uses the already-installed PawnIO driver and an unmodified, signed AMD module from LibreHardwareMonitor v0.9.6. No new driver, fan controller, .NET monitor or HTTP service is installed. The helper reads only the fixed CPU temperature register, cooperates with FanControl's PCI mutex, and shares the latest value through session-local shared memory (no temperature cache/log files). CPU readings older than 8 seconds, partial writes and invalid/missing readings are rejected. The card now shows a CPU sensor only, never the hottest GPU/disk temperature.
+- Install that helper **once with UAC approval** by running `integrations/install-cpu-sensor.ps1 -SourceExe <absolute-release-exe-path>` as administrator. It copies the helper executable into administrator-owned `Program Files\Liquid Deck Sensors` with a read/execute-only Users ACL and creates the demand-start, highest-privilege task **Liquid Deck CPU Sensor** for the current interactive user. The main tray remains unelevated, starts the helper task once after becoming ready, and owns a mutex lease; quitting/crashing the tray ends the helper too. The elevated helper does not serve the panel, execute deck actions or accept commands. Other CPU models currently use CPU-labelled sysinfo sensors if available, otherwise report missing. The native reader is deliberately restricted to AMD family 19h/model 61h (Zen 4 Raphael).
+- Windows now starts in the system tray by default, with no console window in release builds. Double-click the tray icon to open the panel; right-click for **Paneli Aç**, **Note 4’e Bağlan** and **Çıkış**. Use `--console` for terminal-only operation and diagnostic output.
+- The tray uses the native blocking Windows message loop: no GUI framework, animations, periodic connection checks or additional telemetry timers. The existing single-thread Tokio server runs on one background thread.
+- **Note 4’e Bağlan** manually retries the same connection/reverse/wake/Via sequence used automatically at launch. ADB can be on `PATH`, in Android SDK/WinGet locations, or supplied with `LIQUID_DECK_ADB`. The default phone is `192.168.1.101:5555`; override it with `LIQUID_DECK_ADB_TARGET`. Token-protected panel URLs are supported. Double-clicking the EXE still binds only to localhost by default, which works with ADB reverse; `--lan` remains opt-in.
+- Prefer the built-in **Windows ile Başlat** checkbox for normal logon startup; Task Scheduler/PowerShell wrappers above are optional custom deployment examples, not required for the tray app.
 - To run as a service, use [NSSM](https://nssm.cc/) or a Windows service wrapper. Keep the token in the service environment, not in a world-readable script.
 - Add a firewall rule for TCP 8787 only on private networks:
 
@@ -1208,7 +1236,7 @@ The stylesheet ships in **Performance mode** by default, which is designed for o
 - **No noise overlay**: the `mix-blend-mode` grain layer is hidden to avoid an extra full-viewport composite.
 - **Cheap shadows**: large blur radii were replaced with `--shadow-card`, `--shadow-key`, `--shadow-bar` and `--shadow-panel` tokens.
 - **Compositor-only press feedback**: keys use `transform: translateZ(0) scale(0.96)` and transition only `transform`, `border-color` and `opacity`; no layout, no `background`/`box-shadow` animation.
-- **Incremental DOM**: the deck grid, board tabs, ring gauges, chart paths and key toggles are only touched when their value actually changes.
+- **Incremental DOM**: the deck grid, board tabs, numeric telemetry readouts and key toggles are only touched when their value actually changes. History chart paths are generated only on explicit history interaction.
 
 Tap the bolt pill in the top bar (or open `/?fx=full`) to enable **Liquid Glass** with real blur and the slow ambient drift. The choice is stored in `localStorage` under `liquid-deck-fx`. `prefers-reduced-transparency` and `prefers-reduced-motion` still force the cheap path, and browsers without `backdrop-filter` fall back to opaque panels.
 

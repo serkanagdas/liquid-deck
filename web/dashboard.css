@@ -1,0 +1,159 @@
+/* Liquid Deck panel theme — quiet instrument-panel chrome, rich numbers.
+   Spacing sits on a 4 px grid, surfaces stay neutral, and the only strong
+   colors are the data itself. No blur, no animated gradients, no loops. */
+[hidden] { display: none !important; }
+html, body { height: 100%; overflow: hidden; }
+.app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; padding-top: calc(12px + var(--safe-top)); padding-bottom: calc(8px + var(--safe-bottom)); gap: 8px; }
+.topbar { flex: none; }
+.dashboard-nav { display: flex; align-items: center; gap: 8px; flex: none; }
+.dashboard-nav button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; }
+.dashboard-nav button[aria-pressed="true"] { color: var(--ink); background: #202630; border-color: #586472; }
+.dashboard-nav button:nth-child(3) { margin-left: auto; }
+#dashboardPages { flex: 1; min-height: 0; overflow: hidden; touch-action: pan-y; }
+.dashboard-page { height: 100%; min-height: 0; }
+.system-page { display: flex; flex-direction: column; gap: 12px; }
+.system-page .hero { flex: 1; min-height: 0; margin: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); }
+.latency-card { flex: none; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.latency-card[data-alert="true"] { border-color: #c18a35; }
+.dashboard-hint { margin: 0; padding: 0 4px; flex: none; display: flex; justify-content: space-between; gap: 8px; font-size: 10px; color: var(--muted); }
+.dashboard-page.deck-section { margin-top: 0; display: flex; flex-direction: column; }
+.deck-section .section-head, .deck-section .board-bar { flex: none; }
+.deck-section .deck { flex: 1; min-height: 0; align-content: start; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
+/* The dashboard itself never vertically scrolls. Oversized custom decks and
+   editing dialogs keep their own scroll area so up to 32 keys stay reachable. */
+
+/* ---- Hardware cards: interactive, data carries the color ---- */
+.hardware-card { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; min-height: 0; cursor: pointer; }
+.hardware-card:focus-visible { outline: 2px solid #586472; outline-offset: 2px; }
+.hardware-card .card-label { font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; gap: 8px; }
+.hardware-card .card-label small { font-size: 10px; color: var(--muted); }
+.hardware-card .label-icon { width: 20px; height: 20px; }
+.hardware-priority { color: var(--muted-2); font-size: 11px; font-variant-numeric: tabular-nums; }
+.hardware-card .hardware-subtitle { margin: 0; flex: none; font-size: 13px; line-height: 16px; font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hardware-readings { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; align-items: center; }
+.hardware-readings > div { min-width: 0; }
+.reading-label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+.temperature-text, .usage-text { display: flex; align-items: baseline; white-space: nowrap; font-variant-numeric: tabular-nums; line-height: 0.95; }
+.temperature-text { font-size: clamp(56px, 10vw, 96px); color: var(--ink); }
+.usage-text { font-size: clamp(44px, 8vw, 76px); color: var(--accent); }
+.temperature-text strong, .usage-text strong { font-size: 1em; font-weight: 500; letter-spacing: -0.04em; }
+.temperature-unit { margin-left: 4px; font-size: 0.27em; font-weight: 500; }
+.usage-unit { margin-left: 4px; font-size: 0.32em; font-weight: 500; }
+body[data-scale="large"] .temperature-text { font-size: clamp(70px, 12vw, 120px); }
+body[data-scale="large"] .usage-text { font-size: clamp(54px, 9vw, 92px); }
+.temperature-text strong[data-wide="true"] { font-size: 0.82em; }
+.hardware-readings [data-heat="cool"] { color: var(--ink); }
+.hardware-readings [data-heat="warm"] { color: #ffd60a; }
+.hardware-readings [data-heat="hot"] { color: #ff6868; }
+.hardware-readings [data-heat="unknown"] { color: var(--muted); }
+.hardware-bottom { flex: none; display: flex; flex-direction: column; gap: 4px; min-height: 20px; justify-content: flex-end; }
+.fan-line { display: block; margin-top: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fan-line .reading-label { margin-bottom: 8px; }
+.fan-line .fan-value { color: var(--accent); }
+.cpu-sensor-info { color: var(--muted-2); font-size: 10px; }
+.cpu-card { --accent: var(--orange); }
+.gpu-card { --accent: #9ddc48; }
+.gpu-card .card-label small:empty { display: none; }
+.gpu-memory-inline { display: flex; gap: 8px; color: var(--muted); font-size: 11px; }
+.gpu-memory-inline strong { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* ---- Bottom strip: network numbers plus compact RAM ---- */
+.network-strip { display: flex; flex: none; padding: 12px 16px; gap: 16px; align-items: center; }
+.network-strip[data-alert="true"] { border-color: #c18a35; }
+.strip-rates { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; cursor: pointer; }
+.strip-rates > div { min-width: 0; text-align: center; }
+#netStrip:focus-visible { outline: 2px solid #586472; outline-offset: 4px; border-radius: 12px; }
+.strip-label { display: block; color: var(--muted); font-size: 10px; margin-bottom: 4px; }
+.strip-rates strong { font-size: 20px; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 500; }
+.strip-rates strong small { color: var(--muted); font-size: 10px; font-weight: 400; }
+.strip-rates .download { color: var(--cyan); }
+.strip-rates .upload { color: var(--violet); }
+.ram-compact { flex: none; text-align: center; }
+.ram-compact strong { color: #d4a4f5; font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 500; }
+.ram-compact > small { display: block; font-size: 9px; color: var(--muted); white-space: nowrap; }
+
+/* ---- Dialogs ---- */
+.dashboard-dialog { width: min(760px, calc(100% - 24px)); max-height: calc(100vh - 28px); max-height: calc(100dvh - 28px); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 0; }
+.dashboard-dialog:not([open]) { display: none; }
+.dashboard-dialog.dialog-fallback[open] { position: fixed; inset: 12px 0; margin: auto; z-index: 120; overflow-y: auto; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.85); }
+.dashboard-dialog::backdrop { background: rgba(0, 0, 0, 0.85); }
+.dashboard-dialog > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 20px; }
+.dashboard-dialog h2 { margin: 4px 0 0; font-size: 22px; font-weight: 500; }
+.dashboard-dialog h3 { font-size: 14px; font-weight: 500; margin: 20px 0 8px; }
+.dialog-content { padding: 0 20px 20px; }
+.detail-dialog .dialog-content { overflow-y: auto; max-height: calc(100dvh - 160px); }
+.preference-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.preference-row select { max-width: 60%; padding: 8px; color: var(--ink); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 12px; }
+.preference-row input { width: 22px; height: 22px; accent-color: var(--cyan); }
+.privacy-note { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.dashboard-dialog .system-card { margin-top: 16px; }
+
+/* ---- Detail sheet content ---- */
+.detail-hero { display: flex; gap: 24px; align-items: baseline; padding: 4px 0 16px; }
+.detail-big { font-size: clamp(36px, 6vw, 56px); font-weight: 500; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+.detail-accent { color: var(--orange); }
+.detail-upload { color: var(--violet); }
+.detail-grid { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 16px; }
+.detail-grid dt { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+.detail-grid dd { margin: 0; font-size: 14px; font-variant-numeric: tabular-nums; }
+.detail-note { color: var(--muted); font-size: 12px; }
+.thread-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px 16px; }
+.thread-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) 40px; gap: 8px; align-items: center; }
+.thread-label { color: var(--muted); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+.thread-meter { display: block; height: 4px; background: #1c222b; border-radius: 4px; overflow: hidden; }
+.thread-meter i { display: block; height: 100%; width: 100%; background: var(--orange); transform: scaleX(0); transform-origin: left; }
+.thread-value { color: var(--ink); font-size: 11px; font-variant-numeric: tabular-nums; }
+#netDetailChart { display: block; width: 100%; height: 180px; background: #090b0e; border-radius: 12px; }
+.chart-caption { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 8px; font-variant-numeric: tabular-nums; }
+
+/* ---- History dialog ---- */
+#historySummary { color: var(--muted); font-size: 13px; }
+#historyChart { display: block; width: 100%; height: 180px; margin-top: 16px; background: #090b0e; border-radius: 12px; }
+.history-axis, .history-actions { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.history-axis { font-size: 10px; color: var(--muted); margin-top: 8px; }
+.history-events { list-style: none; padding: 0; font-size: 12px; color: var(--muted); }
+.history-events li { padding: 8px 0; }
+
+/* ---- Finishes ---- */
+body[data-finish="glass"] .card,
+body[data-finish="glass"] .topbar,
+body[data-finish="glass"] .dashboard-dialog,
+body[data-finish="glass"] .sheet-panel {
+  background: linear-gradient(180deg, #14161b, #101216 64%);
+  border-color: var(--line);
+}
+body[data-finish="flat"] .card, body[data-finish="flat"] .topbar, body[data-finish="flat"] .key { background-image: none; box-shadow: none; }
+@media (prefers-reduced-transparency: reduce) {
+  body[data-finish="glass"] .card, body[data-finish="glass"] .key, body[data-finish="glass"] .topbar { background: #101216; box-shadow: none; }
+}
+
+/* ---- Small screens ---- */
+@media (max-width: 700px) {
+  .app { padding-left: 12px; padding-right: 12px; gap: 8px; }
+  .system-page .hero { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .dashboard-nav button { padding: 8px; font-size: 11px; }
+  .dashboard-hint { font-size: 9px; }
+  .hardware-card { padding: 12px 16px; }
+  .network-strip { flex-direction: column; align-items: stretch; padding: 8px 12px; gap: 4px; }
+  .ram-compact { display: flex; align-items: baseline; gap: 8px; justify-content: center; }
+}
+@media (max-height: 620px) {
+  .topbar .eyebrow, .clock-seconds, .dashboard-hint { display: none; }
+  .topbar { padding-top: 8px; padding-bottom: 8px; }
+  .hardware-card { padding: 12px 16px; gap: 8px; }
+  .reading-label { margin-bottom: 4px; font-size: 11px; }
+  .detail-hero { gap: 16px; padding-bottom: 12px; }
+  .network-strip { padding: 8px 12px; }
+  .strip-rates strong { font-size: 16px; }
+  .strip-label { font-size: 9px; margin-bottom: 2px; }
+  .hardware-bottom { min-height: 16px; }
+}
+@media (orientation: landscape) and (max-height: 620px) {
+  body[data-scale="large"] .key { min-height: 80px; }
+  /* The GPU card's secondary readouts live in its detail sheet; on the short
+     landscape panel only the headline numbers fit without crowding. */
+  .gpu-card .gpu-details { display: none; }
+  .temperature-text { font-size: clamp(48px, 11vw, 72px); }
+  .usage-text { font-size: clamp(38px, 9vw, 60px); }
+  .hardware-card { gap: 8px; }
+}

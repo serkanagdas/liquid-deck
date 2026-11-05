@@ -1,12 +1,10 @@
 /* Liquid Deck — vanilla JS client
-   WebSocket telemetry, SVG gauges, configurable boards, deck editor and mixer.
+   WebSocket telemetry, hardware gauges, configurable boards, deck editor and mixer.
    No dependencies. */
 
 (() => {
   "use strict";
 
-  const HISTORY_LEN = 24;
-  const RING_CIRCUMFERENCE = 2 * Math.PI * 54;
   const TOKEN_KEY = "liquid-deck.token";
   const MAX_RECONNECT_MS = 10_000;
   const ACTION_TIMEOUT_MS = 12_000;
@@ -151,36 +149,38 @@
     clockSeconds: $("#clockSeconds"),
     clockDate: $("#clockDate"),
     brandHost: $("#brandHost"),
-    pingPill: $("#pingPill"),
-    pingValue: $("#pingValue"),
-    connPill: $("#connPill"),
-    connLabel: $("#connLabel"),
     reconnectBanner: $("#reconnectBanner"),
     reconnectText: $("#reconnectText"),
 
-    cpuRing: $("#cpuRing"),
     cpuValue: $("#cpuValue"),
     cpuTemp: $("#cpuTemp"),
     cpuCores: $("#cpuCores"),
-    cpuLoad: $("#cpuLoad"),
+    cpuSensorLabel: $("#cpuSensorLabel"),
+    cpuFan: $("#cpuFan"),
 
-    ramRing: $("#ramRing"),
     ramValue: $("#ramValue"),
-    ramTotalChip: $("#ramTotalChip"),
-    ramUsed: $("#ramUsed"),
-    ramFree: $("#ramFree"),
+    ramSummary: $("#ramSummary"),
 
-    netIface: $("#netIface"),
     netDownValue: $("#netDownValue"),
     netDownUnit: $("#netDownUnit"),
     netUpValue: $("#netUpValue"),
     netUpUnit: $("#netUpUnit"),
-    netDownBar: $("#netDownBar"),
-    netUpBar: $("#netUpBar"),
-    rxLine: $("#rxLine"),
-    txLine: $("#txLine"),
-    netPeak: $("#netPeak"),
-    netTotal: $("#netTotal"),
+    netStrip: $("#netStrip"),
+    stripPing: $("#stripPing"),
+    gpuName: $("#gpuName"),
+    gpuUsage: $("#gpuUsage"),
+    gpuTemp: $("#gpuTemp"),
+    gpuMemory: $("#gpuMemory"),
+    gpuClock: $("#gpuClock"),
+    gpuMemClock: $("#gpuMemClock"),
+    gpuPower: $("#gpuPower"),
+    gpuFan: $("#gpuFan"),
+    gpuStatus: $("#gpuStatus"),
+
+    detailDialog: $("#detailDialog"),
+    detailBody: $("#detailBody"),
+    detailEyebrow: $("#detailEyebrow"),
+    detailTitle: $("#detailTitle"),
 
     deck: $("#deck"),
     boardTabs: $("#boardTabs"),
@@ -230,8 +230,6 @@
     pingTimer: null,
     pending: new Map(),
     metrics: null,
-    history: Array.from({ length: HISTORY_LEN }, () => ({ t: 0, rx: 0, tx: 0 })),
-    chartMax: 1024,
     host: "",
     version: "",
     scriptsEnabled: false,
@@ -246,6 +244,8 @@
     soundsEnabled: true,
     previewAudio: null,
     sheet: null,
+    detailMode: null,
+    netBuffer: [],
 
     editor: {
       draft: null,
@@ -258,12 +258,6 @@
     },
   };
 
-  const dateFormatter = new Intl.DateTimeFormat(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-
   // -------------------------------------------------------------------------
   // Boot
   // -------------------------------------------------------------------------
@@ -272,16 +266,18 @@
     state.token = readToken();
     state.booted = true;
 
-    initRings();
     bindBoards();
     bindEditor();
     bindAudio();
     bindSheets();
     bindLock();
+    bindDetail();
     bindNetworkEvents();
+    document.addEventListener("liquid:page", () => {
+      if (state.metrics) applyMetrics(state.metrics, { push: false });
+    });
     updateClock();
     setInterval(updateClock, 1000);
-    renderNetwork();
     setConnection("connecting");
 
     const health = await fetch("/api/health", { cache: "no-store" })
@@ -289,6 +285,8 @@
       .catch(() => null);
 
     if (health) {
+      if (window.LiquidDashboard) window.LiquidDashboard.setPingTarget(health.ping_target);
+      state.pingTargetLabel = health.ping_target || "İnternet";
       state.authRequired = Boolean(health.auth_required);
       state.scriptsEnabled = Boolean(health.scripts);
       if (health.version) {
@@ -376,14 +374,18 @@
   // -------------------------------------------------------------------------
 
   function updateClock() {
+    if (document.hidden) return;
+    if (window.LiquidDashboard) window.LiquidDashboard.tick();
     const now = new Date();
     const hours = String(now.getHours()).padStart(2, "0");
     const minutes = String(now.getMinutes()).padStart(2, "0");
     const seconds = String(now.getSeconds()).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const month = String(now.getMonth() + 1).padStart(2, "0");
 
     setText(els.clockTime, `${hours}:${minutes}`);
     setText(els.clockSeconds, seconds);
-    setText(els.clockDate, dateFormatter.format(now).toUpperCase());
+    setText(els.clockDate, `${day}/${month}/${now.getFullYear()}`);
   }
 
   // -------------------------------------------------------------------------
@@ -509,9 +511,7 @@
         if (state.version) setText(els.deckVersion, `v${state.version}`);
 
         applyDeckPayload(message.config, message.state);
-        setHistory(message.history);
         if (message.metrics) applyMetrics(message.metrics, { push: false });
-        else renderNetwork();
         break;
 
       case "config":
@@ -623,80 +623,34 @@
   function applyMetrics(metrics, options = {}) {
     if (!metrics || typeof metrics !== "object") return;
     state.metrics = metrics;
+    pushNetBuffer(metrics);
+    if (window.LiquidDashboard) window.LiquidDashboard.ingest(metrics, options.push !== false);
+    if (document.hidden) return;
+    renderConnectionMetrics(metrics);
+    if (state.detailMode) renderDetail();
+    if (document.body.dataset.page === "deck") return;
+    renderGpu(metrics.gpu);
 
     const cpu = clamp(Number(metrics.cpu) || 0, 0, 100);
-    const ram = clamp(Number(metrics.ram_pct) || 0, 0, 100);
-
-    setRing(els.cpuRing, cpu);
-    setRing(els.ramRing, ram);
     setText(els.cpuValue, String(Math.round(cpu)));
-    setText(els.ramValue, String(Math.round(ram)));
 
     const temperature = Number(metrics.temp);
     setText(
       els.cpuTemp,
       Number.isFinite(temperature) && temperature > 0
-        ? `${Math.round(temperature)}°`
+        ? String(Math.round(temperature))
         : "—",
     );
+    els.cpuTemp.dataset.wide = String(Number.isFinite(temperature) && temperature >= 100);
+    setText(els.cpuSensorLabel, metrics.temp_source || "CPU sensörü okunamıyor");
+    renderFanPercentLine(els.cpuFan, metrics.cpu_fan_pct);
 
     setText(
       els.cpuCores,
       Number.isFinite(Number(metrics.cpu_cores))
-        ? `${metrics.cpu_cores} cores`
-        : "— cores",
+        ? `${metrics.cpu_cores} iş parçacığı`
+        : "İşlemci",
     );
-    setText(els.cpuLoad, `load ${formatLoad(metrics.load && metrics.load[0])}`);
-
-    const ramTotal = Number(metrics.ram_total) || 0;
-    const ramUsed = Number(metrics.ram_used) || 0;
-    const ramFree = Math.max(0, ramTotal - ramUsed);
-    setText(els.ramTotalChip, formatBytes(ramTotal));
-    setText(els.ramUsed, `used ${formatBytes(ramUsed)}`);
-    setText(els.ramFree, `free ${formatBytes(ramFree)}`);
-
-    const rx = Math.max(0, Number(metrics.net_rx) || 0);
-    const tx = Math.max(0, Number(metrics.net_tx) || 0);
-    const down = formatRate(rx);
-    const up = formatRate(tx);
-    setText(els.netDownValue, down.value);
-    setText(els.netDownUnit, down.unit);
-    setText(els.netUpValue, up.value);
-    setText(els.netUpUnit, up.unit);
-    setText(els.netIface, metrics.iface || "—");
-    setText(
-      els.netTotal,
-      `↓ ${formatBytes(metrics.net_rx_total)} · ↑ ${formatBytes(
-        metrics.net_tx_total,
-      )} total`,
-    );
-
-    if (options.push !== false) {
-      pushHistory({
-        t: Number(metrics.ts) || Date.now(),
-        rx,
-        tx,
-      });
-    }
-
-    renderNetwork(rx, tx);
-
-    const ping = metrics.ping;
-    if (typeof ping === "number" && Number.isFinite(ping) && ping >= 0) {
-      const display = ping < 10 ? ping.toFixed(1) : String(Math.round(ping));
-      setText(els.pingValue, display);
-      setText(els.sysPing, `${display} ms`);
-      const quality = ping < 60 ? "good" : ping < 150 ? "ok" : "bad";
-      if (els.pingPill.dataset.quality !== quality) {
-        els.pingPill.dataset.quality = quality;
-      }
-    } else {
-      setText(els.pingValue, "--");
-      setText(els.sysPing, "—");
-      if (els.pingPill.dataset.quality !== "unknown") {
-        els.pingPill.dataset.quality = "unknown";
-      }
-    }
 
     setText(els.sysUptime, formatUptime(Number(metrics.uptime) || 0));
     setText(els.sysLoad, formatLoadTriple(metrics.load));
@@ -710,119 +664,268 @@
     if (metrics.os) setText(els.sysOs, metrics.os);
   }
 
-  function pushHistory(point) {
-    state.history.push(point);
-    while (state.history.length > HISTORY_LEN) state.history.shift();
+  function renderConnectionMetrics(metrics) {
+    const ram = Number(metrics.ram_pct);
+    setText(els.ramValue, typeof metrics.ram_pct === "number" && Number.isFinite(ram) ? String(Math.round(clamp(ram, 0, 100))) : "—");
+    setText(els.ramSummary, formatMemoryPair(metrics.ram_used, metrics.ram_total));
+    const down = formatRate(metrics.net_rx);
+    const up = formatRate(metrics.net_tx);
+    setText(els.netDownValue, down.value);
+    setText(els.netDownUnit, down.unit);
+    setText(els.netUpValue, up.value);
+    setText(els.netUpUnit, up.unit);
+    const ping = metrics.ping;
+    const valid = typeof ping === "number" && Number.isFinite(ping) && ping >= 0;
+    const display = valid ? (ping < 10 ? ping.toFixed(1) : String(Math.round(ping))) : "—";
+    setText(els.stripPing, display);
+    setText(els.sysPing, valid ? `${display} ms` : "—");
   }
 
-  function setHistory(points) {
-    const list = Array.isArray(points) ? points.slice(-HISTORY_LEN) : [];
-    const padding = Math.max(0, HISTORY_LEN - list.length);
-    const blanks = Array.from({ length: padding }, () => ({ t: 0, rx: 0, tx: 0 }));
-    state.history = blanks.concat(
-      list.map((point) => ({
-        t: Number(point.t) || 0,
-        rx: Math.max(0, Number(point.rx) || 0),
-        tx: Math.max(0, Number(point.tx) || 0),
-      })),
-    );
-    state.chartMax = 1024;
+  function renderGpu(value) {
+    const gpu = value || {};
+    const number = (value) => typeof value === "number" && Number.isFinite(value);
+    setText(els.gpuName, gpu.name || "GPU verisi yok");
+    setText(els.gpuUsage, number(gpu.usage) ? String(Math.round(gpu.usage)) : "—");
+    setText(els.gpuTemp, number(gpu.temp) ? String(Math.round(gpu.temp)) : "—");
+    els.gpuTemp.dataset.wide = String(number(gpu.temp) && gpu.temp >= 100);
+    els.gpuTemp.dataset.heat = !number(gpu.temp) ? "unknown" : gpu.temp >= 83 ? "hot" : gpu.temp >= 70 ? "warm" : "cool";
+    setText(els.gpuMemory, formatMemoryPair(gpu.memory_used, gpu.memory_total));
+    setText(els.gpuClock, number(gpu.clock_mhz) ? `${gpu.clock_mhz} MHz` : "Veri yok");
+    setText(els.gpuMemClock, number(gpu.mem_clock_mhz) ? `${gpu.mem_clock_mhz} MHz` : "Veri yok");
+    const power = number(gpu.power_watts) ? `${gpu.power_watts.toFixed(1)} W` : "Veri yok";
+    setText(els.gpuPower, power + (number(gpu.power_limit_watts) ? ` / ${Math.round(gpu.power_limit_watts)} W` : ""));
+    els.gpuFan.hidden = !(number(gpu.fan_rpm) || number(gpu.fan_pct));
+    if (number(gpu.fan_rpm)) {
+      els.gpuFan.innerHTML = `<span class="reading-label">Fan</span><span class="usage-text fan-value"><strong>${Math.round(gpu.fan_rpm)}</strong><small class="usage-unit">RPM</small></span>`;
+    } else if (number(gpu.fan_pct)) {
+      els.gpuFan.innerHTML = `<span class="reading-label">Fan</span><span class="usage-text fan-value"><strong>${Math.round(gpu.fan_pct)}</strong><small class="usage-unit">%</small></span>`;
+    }
+    setText(els.gpuStatus, gpu.status || "");
+    els.gpuStatus.hidden = !gpu.status;
   }
 
-  function initRings() {
-    for (const ring of [els.cpuRing, els.ramRing]) {
-      if (!ring) continue;
-      ring.style.strokeDasharray = String(RING_CIRCUMFERENCE);
-      ring.style.strokeDashoffset = String(RING_CIRCUMFERENCE);
+  function renderFanPercentLine(node, value) {
+    if (!node) return;
+    const valid = typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
+    node.hidden = !valid;
+    if (valid) node.innerHTML = `<span class="reading-label">Fan</span><span class="usage-text fan-value"><strong>${Math.round(value)}</strong><small class="usage-unit">%</small></span>`;
+  }
+
+  function pushNetBuffer(metrics) {
+    const rx = Number(metrics.net_rx);
+    const tx = Number(metrics.net_tx);
+    const ping = metrics.ping;
+    if (!Number.isFinite(rx) || !Number.isFinite(tx)) return;
+    state.netBuffer.push({
+      t: Number(metrics.ts) || Date.now(),
+      rx: Math.max(0, rx),
+      tx: Math.max(0, tx),
+      ping: typeof ping === "number" && Number.isFinite(ping) ? ping : null,
+    });
+    while (state.netBuffer.length > 300) state.netBuffer.shift();
+  }
+
+  function formatMemoryPair(used, total) {
+    if (typeof used !== "number" || typeof total !== "number" || !Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return "Veri yok";
+    return `${(used / 1073741824).toFixed(1)} / ${(total / 1073741824).toFixed(1)} GB`;
+  }
+
+  // -------------------------------------------------------------------------
+  // Hardware detail sheets
+  // -------------------------------------------------------------------------
+
+  function openDetail(mode) {
+    state.detailMode = mode;
+    renderDetail();
+    const dialog = els.detailDialog;
+    if (!dialog) return;
+    if (typeof dialog.showModal === "function") {
+      if (!dialog.open) dialog.showModal();
+    } else {
+      dialog.setAttribute("open", "");
+      dialog.classList.add("dialog-fallback");
+    }
+    vibrate(8);
+  }
+
+  function closeDetail() {
+    state.detailMode = null;
+    const dialog = els.detailDialog;
+    if (!dialog) return;
+    if (typeof dialog.close === "function") {
+      if (dialog.open) dialog.close();
+    } else {
+      dialog.removeAttribute("open");
+      dialog.classList.remove("dialog-fallback");
     }
   }
 
-  function setRing(element, percent) {
-    if (!element) return;
-    const value = clamp(percent, 0, 100);
-    const offset = String(RING_CIRCUMFERENCE * (1 - value / 100));
-    if (element.dataset.offset !== offset) {
-      element.dataset.offset = offset;
-      element.style.strokeDashoffset = offset;
+  function bindDetail() {
+    for (const id of ["cpuCard", "gpuCard", "netStrip"]) {
+      const node = document.getElementById(id);
+      if (!node) continue;
+      const mode = id === "cpuCard" ? "cpu" : id === "gpuCard" ? "gpu" : "net";
+      node.addEventListener("click", () => openDetail(mode));
+      node.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openDetail(mode);
+        }
+      });
     }
-    const hot = value >= 85;
-    if (element.classList.contains("is-hot") !== hot) {
-      element.classList.toggle("is-hot", hot);
-    }
+    const dismiss = els.detailDialog && els.detailDialog.querySelector("[data-dismiss]");
+    if (dismiss) dismiss.addEventListener("click", closeDetail);
+    els.detailDialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeDetail();
+    });
   }
 
-  function setAttr(element, name, value) {
-    if (element && element.getAttribute(name) !== value) {
-      element.setAttribute(name, value);
-    }
+  function svgNode(name, attributes) {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", name);
+    Object.keys(attributes).forEach((key) => element.setAttribute(key, attributes[key]));
+    return element;
   }
 
-  function setMeter(element, percent) {
-    if (!element) return;
-    // Quantise to 0.5%: consecutive ticks then usually produce the exact same
-    // transform, so the DOM write (and its style invalidation) is skipped.
-    const value = Math.round(clamp(percent, 0, 100) * 2) / 2;
-    const key = String(value);
-    if (element.dataset.meter === key) return;
-    element.dataset.meter = key;
-    // Compositor-only: `width` would re-lay-out the network card every tick.
-    element.style.transform = value >= 100 ? "none" : `scaleX(${value / 100})`;
+  function renderDetail() {
+    if (!state.detailMode) return;
+    if (state.detailMode === "cpu") renderCpuDetail();
+    else if (state.detailMode === "gpu") renderGpuDetail();
+    else renderNetDetail();
   }
 
-  const CHART_W = 360;
-  const CHART_H = 110;
-  const CHART_TOP = 9;
-  const CHART_BOTTOM = 10;
-  const CHART_SPAN = CHART_H - CHART_TOP - CHART_BOTTOM;
+  function detailRow(label, value) {
+    return `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+  }
 
-  function renderNetwork(currentRx, currentTx) {
-    const history = state.history;
-    const count = history.length;
-    if (!count || !els.rxLine) return;
+  function renderCpuDetail() {
+    const metrics = state.metrics || {};
+    const number = (value) => typeof value === "number" && Number.isFinite(value);
+    const temperature = number(metrics.temp) ? `${Math.round(metrics.temp)} °C` : "Sensör yok";
+    const power = number(metrics.cpu_power) ? `${metrics.cpu_power.toFixed(1)} W` : "Veri yok";
+    const fans = Array.isArray(metrics.cpu_fans) ? metrics.cpu_fans : [];
+    const fanNames = ["CPU", "Sistem 1", "Sistem 2", "Sistem 3", "Sistem 4", "Sistem 5", "Sistem 6", "Sistem 7"];
+    const fanRows = fans
+      .map((rpm, index) => ({ rpm, label: fanNames[index] || `Başlık ${index + 1}` }))
+      .filter((fan) => fan.rpm === 0 || fan.rpm);
+    const threads = Array.isArray(metrics.cpus) ? metrics.cpus : [];
+    const bars = threads
+      .map(
+        (usage, index) => `<div class="thread-row"><span class="thread-label">${index + 1}</span><span class="thread-meter"><i style="transform:scaleX(${clamp(usage, 0, 100) / 100})"></i></span><span class="thread-value">${usage}%</span></div>`,
+      )
+      .join("");
+    els.detailEyebrow.textContent = metrics.temp_source || "CPU";
+    els.detailTitle.textContent = "İşlemci";
+    els.detailBody.innerHTML = `
+      <div class="detail-hero">
+        <div><span class="reading-label">Sıcaklık</span><strong class="detail-big">${temperature}</strong></div>
+        <div><span class="reading-label">Paket gücü</span><strong class="detail-big detail-accent">${power}</strong></div>
+      </div>
+      <dl class="detail-grid">
+        ${detailRow("Çekirdek / iş parçacığı", number(metrics.cpu_cores) ? `${metrics.cpu_cores} iş parçacığı` : "Veri yok")}
+        ${detailRow("Yük ortalaması", formatLoadTriple(metrics.load))}
+        ${detailRow("Fan kaynağı", metrics.cpu_chip || "SuperIO bulunamadı")}
+        ${detailRow("Çalışma süresi", formatUptime(Number(metrics.uptime) || 0))}
+      </dl>
+      <h3>Fanlar</h3>
+      ${fanRows.length ? `<div class="detail-grid">${fanRows.map((fan) => detailRow(fan.label, `${fan.rpm} RPM`)).join("")}</div>` : "<p class='detail-note'>Bağlı fan başlığı okunamadı.</p>"}
+      <h3>İş parçacığı kullanımı</h3>
+      <div class="thread-grid">${bars || "<p class='detail-note'>Ölçüm bekleniyor</p>"}</div>
+    `;
+  }
 
-    // Single pass: collect both series and the peak together (no spread of
-    // thousands of arguments into Math.max, no throw-away arrays).
-    const rxValues = new Array(count);
-    const txValues = new Array(count);
-    let peak = 1;
-    for (let index = 0; index < count; index += 1) {
-      const point = history[index];
-      const rx = point.rx > 0 ? point.rx : 0;
-      const tx = point.tx > 0 ? point.tx : 0;
-      rxValues[index] = rx;
-      txValues[index] = tx;
-      if (rx > peak) peak = rx;
-      if (tx > peak) peak = tx;
-    }
+  function renderGpuDetail() {
+    const gpu = (state.metrics && state.metrics.gpu) || {};
+    const number = (value) => typeof value === "number" && Number.isFinite(value);
+    const pstate = number(gpu.pstate) ? `P${gpu.pstate}` : "Veri yok";
+    const fan = number(gpu.fan_rpm)
+      ? `${gpu.fan_rpm} RPM${number(gpu.fan_pct) ? ` · %${gpu.fan_pct}` : ""}`
+      : number(gpu.fan_pct)
+        ? `%${gpu.fan_pct}`
+        : "Veri yok";
+    els.detailEyebrow.textContent = "GPU";
+    els.detailTitle.textContent = gpu.name || "Grafik işlemci";
+    els.detailBody.innerHTML = `
+      <div class="detail-hero">
+        <div><span class="reading-label">Sıcaklık</span><strong class="detail-big">${number(gpu.temp) ? `${Math.round(gpu.temp)} °C` : "Veri yok"}</strong></div>
+        <div><span class="reading-label">Kullanım</span><strong class="detail-big detail-accent">${number(gpu.usage) ? `${Math.round(gpu.usage)}%` : "Veri yok"}</strong></div>
+      </div>
+      <dl class="detail-grid">
+        ${detailRow("VRAM", formatMemoryPair(gpu.memory_used, gpu.memory_total))}
+        ${detailRow("Çekirdek saati", number(gpu.clock_mhz) ? `${gpu.clock_mhz} MHz` : "Veri yok")}
+        ${detailRow("Bellek saati", number(gpu.mem_clock_mhz) ? `${gpu.mem_clock_mhz} MHz` : "Veri yok")}
+        ${detailRow("Güç / limit", number(gpu.power_watts) ? `${gpu.power_watts.toFixed(1)} W${number(gpu.power_limit_watts) ? ` / ${Math.round(gpu.power_limit_watts)} W` : ""}` : "Veri yok")}
+        ${detailRow("Fan", fan)}
+        ${detailRow("Durum", pstate)}
+      </dl>
+      ${gpu.status ? `<p class="detail-note">${gpu.status}</p>` : ""}
+    `;
+  }
 
-    const target = Math.max(peak * 1.2, 1024);
-    state.chartMax = Math.max(target, state.chartMax * 0.9);
-    const scale = state.chartMax;
-
-    setAttr(els.rxLine, "d", chartPath(rxValues, scale));
-    setAttr(els.txLine, "d", chartPath(txValues, scale));
-
-    setMeter(els.netDownBar, ((currentRx || 0) / scale) * 100);
-    setMeter(els.netUpBar, ((currentTx || 0) / scale) * 100);
-
+  function renderNetDetail() {
+    const metrics = state.metrics || {};
+    const buffer = state.netBuffer;
+    const rates = buffer.map((point) => Math.max(point.rx, point.tx));
+    const peak = rates.length ? Math.max(...rates) : 0;
+    const scale = Math.max(peak * 1.1, 1024);
+    const span = Math.max(60_000, (buffer.length ? buffer[buffer.length - 1].t : 0) - (buffer.length ? buffer[0].t : 0));
+    const width = 600;
+    const height = 160;
+    const top = 12;
+    const bottom = 18;
+    const usable = height - top - bottom;
+    const xFor = (point) => {
+      const offset = buffer.length > 1 ? (point.t - buffer[0].t) / span : 0;
+      return 8 + offset * (width - 16);
+    };
+    const yFor = (value) => height - bottom - (value / scale) * usable;
+    const path = (key) =>
+      buffer.map((point, index) => `${index ? "L" : "M"}${xFor(point).toFixed(1)} ${yFor(point[key]).toFixed(1)}`).join("");
     const peakLabel = formatRate(scale);
-    setText(els.netPeak, `peak ${peakLabel.value} ${peakLabel.unit}`);
+    const totalLabel = (metrics.net_rx_total) ? `↓ ${formatBytes(metrics.net_rx_total)} · ↑ ${formatBytes(metrics.net_tx_total)}` : "—";
+    els.detailEyebrow.textContent = "Ağ";
+    els.detailTitle.textContent = "İnternet";
+    els.detailBody.innerHTML = `
+      <div class="detail-hero">
+        <div><span class="reading-label">İndirme</span><strong class="detail-big detail-accent"><span id="detailDown">—</span></strong></div>
+        <div><span class="reading-label">Yükleme</span><strong class="detail-big detail-upload"><span id="detailUp">—</span></strong></div>
+      </div>
+      <svg id="netDetailChart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Son ölçümlerde indirme ve yükleme hızları"></svg>
+      <div class="chart-caption"><span>${peakLabel.value} ${peakLabel.unit} ölçek</span><span>son ${Math.round(span / 60000)} dakika</span></div>
+      <dl class="detail-grid">
+        ${detailRow("TCP ping", formatPingLabel(metrics.ping))}
+        ${detailRow("Toplam (açılıştan beri)", totalLabel)}
+        ${detailRow("Ölçüm hedefi", state.pingTargetLabel || "İnternet")}
+        ${detailRow("Arayüz", metrics.iface || "—")}
+      </dl>
+    `;
+    const svg = document.getElementById("netDetailChart");
+    if (svg) {
+      svg.appendChild(svgNode("path", { d: `M8 ${height - bottom}H${width - 8}`, stroke: "#303843", fill: "none" }));
+      for (let index = 1; index <= 3; index += 1) {
+        const y = height - bottom - (usable * index) / 3;
+        svg.appendChild(svgNode("path", { d: `M8 ${y.toFixed(1)}H${width - 8}`, stroke: "#1c222b", fill: "none" }));
+      }
+      if (buffer.length > 1) {
+        svg.appendChild(svgNode("path", { d: path("tx"), stroke: "#8b5fd1", "stroke-width": "1.6", fill: "none" }));
+        svg.appendChild(svgNode("path", { d: path("rx"), stroke: "#64d2ff", "stroke-width": "2", fill: "none" }));
+      } else {
+        const label = svgNode("text", { x: "16", y: "80", fill: "#8b93a1", "font-size": "11" });
+        label.textContent = "Grafik için birkaç ölçüm birikiyor…";
+        svg.appendChild(label);
+      }
+    }
+    const down = formatRate(metrics.net_rx);
+    const up = formatRate(metrics.net_tx);
+    const downNode = document.getElementById("detailDown");
+    const upNode = document.getElementById("detailUp");
+    if (downNode) downNode.textContent = `${down.value} ${down.unit}`;
+    if (upNode) upNode.textContent = `${up.value} ${up.unit}`;
   }
 
-  // Straight segments with integer coordinates: compact `d` strings and no
-  // per-tick float formatting. No area fill is drawn: flat strokes only.
-  function chartPath(values, maximum) {
-    const count = values.length;
-    const step = CHART_W / Math.max(1, count - 1);
-    const ratio = CHART_SPAN / (maximum > 0 ? maximum : 1);
-    const base = CHART_H - CHART_BOTTOM;
-    const yFor = (value) => Math.round(base - (value > 0 ? value : 0) * ratio);
-
-    let line = `M0 ${yFor(values[0])}`;
-    for (let index = 1; index < count; index += 1) {
-      line += `L${Math.round(index * step)} ${yFor(values[index])}`;
-    }
-    return line;
+  function formatPingLabel(ping) {
+    const valid = typeof ping === "number" && Number.isFinite(ping) && ping >= 0;
+    return valid ? `${ping < 10 ? ping.toFixed(1) : Math.round(ping)} ms` : "Ölçülemedi";
   }
 
   // -------------------------------------------------------------------------
@@ -830,17 +933,6 @@
   // -------------------------------------------------------------------------
 
   function setConnection(mode) {
-    if (!els.connPill) return;
-    const labels = {
-      live: "Live",
-      connecting: "Linking",
-      offline: "Offline",
-      polling: "Polling",
-      locked: "Locked",
-    };
-    els.connPill.dataset.state = mode;
-    setText(els.connLabel, labels[mode] || mode);
-
     const showBanner = mode === "offline" || mode === "polling";
     document.body.classList.toggle("is-offline", showBanner);
     if (els.reconnectBanner) {
@@ -850,8 +942,8 @@
       setText(
         els.reconnectText,
         mode === "polling"
-          ? "Live link lost — polling metrics…"
-          : "Connection lost — reconnecting…",
+          ? "Canlı bağlantı koptu — yedek ölçümden devam…"
+          : "Bağlantı koptu — yeniden bağlanılıyor…",
       );
     }
   }
@@ -1152,10 +1244,12 @@
     for (const key of $$(".key", els.deck)) {
       let timer = null;
       let longPressed = false;
+      let pointerStart = null;
 
       key.addEventListener("pointerdown", (event) => {
         if (event.pointerType === "mouse" && event.button !== 0) return;
         longPressed = false;
+        pointerStart = { x: event.clientX, y: event.clientY };
         key.classList.add("pressed");
         vibrate(8);
         clearTimeout(timer);
@@ -1171,9 +1265,18 @@
         }, LONG_PRESS_MS);
       });
 
+      key.addEventListener("pointermove", (event) => {
+        if (pointerStart && Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 12) {
+          clearTimeout(timer);
+          longPressed = true; // A swipe must never execute an action or open the editor.
+          key.classList.remove("pressed");
+        }
+      });
+
       for (const eventName of ["pointerup", "pointercancel", "pointerleave"]) {
         key.addEventListener(eventName, () => {
           clearTimeout(timer);
+          pointerStart = null;
           key.classList.remove("pressed");
         });
       }
@@ -3077,6 +3180,7 @@
     failPending("Deck locked.");
     closeSheet("audio");
     closeSheet("editor");
+    closeDetail();
     state.editor.draft = null;
     state.sheet = null;
 
@@ -3180,6 +3284,7 @@
     });
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible" && !state.locked) {
+        if (state.metrics) applyMetrics(state.metrics, { push: false });
         if (!state.wsOpen) connect();
       }
     });
@@ -3250,9 +3355,9 @@
     const days = Math.floor(seconds / 86400);
     const hours = Math.floor((seconds % 86400) / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    if (days > 0) return `${days}d ${hours}h`;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
+    if (days > 0) return `${days} gün ${hours} sa`;
+    if (hours > 0) return `${hours} sa ${minutes} dk`;
+    return `${minutes} dk`;
   }
 
   function formatLoad(value) {

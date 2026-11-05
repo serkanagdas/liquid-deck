@@ -4,12 +4,23 @@
 //! runtime assets. One axum server exposes the UI, a JSON API and a WebSocket
 //! metrics stream on the same port.
 
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod actions;
 mod audio;
 mod deck;
+mod cpu_temp;
+mod gpu;
 mod metrics;
 mod obs;
+mod pawn;
 mod sounds;
+#[cfg(windows)]
+mod startup;
+#[cfg(windows)]
+mod superio;
+#[cfg(windows)]
+mod tray;
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -144,16 +155,50 @@ impl Drop for ClientGuard {
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
-    if let Err(error) = run().await {
+fn main() {
+    #[cfg(windows)]
+    if env::args().any(|arg| arg == "--cpu-sensor-helper") {
+        if cpu_temp::run_helper().is_err() { std::process::exit(1); }
+        return;
+    }
+    #[cfg(windows)]
+    if env::args().any(|arg| matches!(arg.as_str(), "--enable-startup" | "--disable-startup")) {
+        tray::attach_console();
+        let enable = env::args().any(|arg| arg == "--enable-startup");
+        if let Err(error) = startup::set_enabled(enable) { tray::show_error(&error); std::process::exit(1); }
+        println!("Windows logon startup: {}", if enable { "enabled" } else { "disabled" });
+        return;
+    }
+    #[cfg(windows)]
+    let console = env::args().any(|arg| {
+        matches!(arg.as_str(), "--console" | "--help" | "-h" | "--version" | "-V")
+    });
+    #[cfg(windows)]
+    if console {
+        tray::attach_console();
+    }
+    let result = parse_config().and_then(|config| {
+        #[cfg(windows)]
+        if !console {
+            return tray::run(config);
+        }
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| error.to_string())?;
+        runtime.block_on(run(config, Arc::new(Notify::new()), None))
+    });
+    if let Err(error) = result {
         eprintln!("liquid-deck: {error}");
+        #[cfg(windows)]
+        if !console {
+            tray::show_error(&error);
+        }
         std::process::exit(1);
     }
 }
 
-async fn run() -> Result<(), String> {
-    let config = parse_config()?;
+async fn run(config: Config, shutdown: Arc<Notify>, ready: Option<tokio::sync::oneshot::Sender<()>>) -> Result<(), String> {
     let bind = config.bind;
 
     let (deck_config, warning) = deck::load_or_default(&config.deck_path);
@@ -182,6 +227,7 @@ async fn run() -> Result<(), String> {
     let activity = Arc::new(AtomicU64::new(0));
     let wake = Arc::new(Notify::new());
     let ping_us = Arc::new(AtomicU32::new(PING_NONE));
+    let ping_ts = Arc::new(AtomicU64::new(0));
 
     let executor = Arc::new(Executor::new(
         config.scripts_dir.clone(),
@@ -212,12 +258,13 @@ async fn run() -> Result<(), String> {
         activity.clone(),
         wake,
         ping_us.clone(),
+        ping_ts.clone(),
         metrics::SamplerConfig {
             sample_ms: config.sample_ms,
             idle_ms: config.idle_ms,
         },
     );
-    metrics::spawn_ping(ping_us, clients, activity, config.ping_target.clone());
+    metrics::spawn_ping(ping_us, ping_ts, clients, activity, config.ping_target.clone());
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
@@ -246,10 +293,14 @@ async fn run() -> Result<(), String> {
         .map_err(|error| format!("cannot read local address: {error}"))?;
 
     print_banner(&config, local).await;
+    if let Some(ready) = ready { let _ = ready.send(()); }
 
     axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+        .with_graceful_shutdown(async move {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {},
+                _ = shutdown.notified() => {},
+            }
         })
         .await
         .map_err(|error| format!("server error: {error}"))?;
@@ -274,6 +325,7 @@ async fn health_handler(State(state): State<AppState>) -> Response {
         "auth_required": state.config.token.is_some(),
         "scripts": state.config.scripts_dir.is_some(),
         "sample_ms": state.config.sample_ms,
+        "ping_target": state.config.ping_target,
     }))
     .into_response()
 }
@@ -975,7 +1027,7 @@ async fn static_handler(method: Method, uri: Uri, headers: HeaderMap) -> Respons
 
     let data = file.data;
     let tag = etag(&data);
-    let cache = if asset_path == "index.html" {
+    let cache = if asset_path == "index.html" || asset_path.ends_with(".js") || asset_path.ends_with(".css") {
         "no-cache"
     } else {
         "public, max-age=3600"
@@ -1140,6 +1192,8 @@ fn parse_config() -> Result<Config, String> {
             }
             "--lan" => bind_raw = Some("0.0.0.0".to_string()),
             "--local" => bind_raw = Some("127.0.0.1".to_string()),
+            #[cfg(windows)]
+            "--console" => {}
             "--token" => {
                 token = Some(args.next().ok_or("--token requires a value")?);
             }
@@ -1245,6 +1299,9 @@ OPTIONS:
   --port <PORT>       Port used when --bind has no port (default 8787)
   --lan               Shortcut for --bind 0.0.0.0 (reachable from your phone)
   --local             Shortcut for --bind 127.0.0.1
+  --enable-startup    Windows: enable this user's tray startup at logon, then exit
+  --disable-startup   Windows: disable this user's logon startup, then exit
+  --console           Windows: run without the tray, with console output
   --token <TOKEN>     Require this token for metrics, WebSocket and actions
   --scripts <DIR>     Enable script actions from this directory
   --config <FILE>     Board layout file (default <data>/boards.json)

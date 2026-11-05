@@ -36,8 +36,21 @@ pub struct Metrics {
     pub ram_total: u64,
     /// Used RAM, percent.
     pub ram_pct: f32,
-    /// Hottest readable sensor, Celsius. `null` when unavailable.
+    /// CPU temperature only, Celsius. `null` when no CPU sensor is available.
     pub temp: Option<f32>,
+    pub temp_source: Option<String>,
+    /// CPU package power in watts from the MSR energy counter. `null` until
+    /// the second sample or when the readout is unavailable.
+    pub cpu_power: Option<f32>,
+    /// Per-thread CPU usage, percent, logical-core order.
+    pub cpus: Vec<u32>,
+    /// SuperIO fan speeds in RPM; `null` marks an unconnected header.
+    pub cpu_fans: Vec<Option<u32>>,
+    /// CPU fan PWM duty cycle, read directly from the SuperIO monitor.
+    pub cpu_fan_pct: Option<u32>,
+    /// Detected SuperIO chip, for the provenance line.
+    pub cpu_chip: Option<String>,
+    pub gpu: crate::gpu::GpuMetrics,
     /// Download rate, bytes per second.
     pub net_rx: f64,
     /// Upload rate, bytes per second.
@@ -48,6 +61,8 @@ pub struct Metrics {
     pub net_tx_total: u64,
     /// TCP handshake latency in milliseconds. `null` when unreachable.
     pub ping: Option<f32>,
+    /// Timestamp of the last TCP probe, so repeated telemetry isn't a new ping.
+    pub ping_ts: u64,
     /// System uptime in seconds.
     pub uptime: u64,
     /// 1 / 5 / 15 minute load average.
@@ -90,6 +105,7 @@ pub fn spawn_sampler(
     activity: Arc<AtomicU64>,
     wake: Arc<Notify>,
     ping_us: Arc<AtomicU32>,
+    ping_ts: Arc<AtomicU64>,
     config: SamplerConfig,
 ) {
     tokio::spawn(async move {
@@ -99,6 +115,8 @@ pub fn spawn_sampler(
 
         let mut networks = Networks::new_with_refreshed_list();
         let mut components = Components::new_with_refreshed_list();
+        let gpu = crate::gpu::Gpu::new();
+        let mut cpu_temperature = crate::cpu_temp::Reader::new();
 
         let host = System::host_name().unwrap_or_else(|| "unknown".to_string());
         let os = System::long_os_version().unwrap_or_else(|| std::env::consts::OS.to_string());
@@ -179,6 +197,17 @@ pub fn spawn_sampler(
                 Some(round1(ping_raw as f64 / 1_000.0) as f32)
             };
 
+            let direct_temperature = cpu_temperature.sample();
+            let cpu_power = cpu_temperature.power_watts();
+            let cpu_fans = cpu_temperature.fans();
+            let cpu_fan_pct = cpu_temperature.fan_pct();
+            let fallback_temperature = cpu_component_temperature(&components);
+            let temperature = direct_temperature.or(fallback_temperature);
+            let cpus: Vec<u32> = system
+                .cpus()
+                .iter()
+                .map(|core| core.cpu_usage().clamp(0.0, 100.0).round() as u32)
+                .collect();
             let load = System::load_average();
             let metrics = Metrics {
                 ts: now_ms(),
@@ -187,12 +216,25 @@ pub fn spawn_sampler(
                 ram_used,
                 ram_total,
                 ram_pct: ram_pct.clamp(0.0, 100.0),
-                temp: hottest_component(&components),
+                temp: temperature,
+                temp_source: direct_temperature
+                    .map(|_| "AMD Tctl/Tdie · PawnIO".to_string())
+                    .or_else(|| fallback_temperature.map(|_| "CPU · sysinfo".to_string())),
+                cpu_power,
+                cpus,
+                cpu_fans,
+                cpu_fan_pct,
+                cpu_chip: cpu_temperature.chip_name(),
+                gpu: gpu.sample(
+                    clients.load(Ordering::Relaxed) > 0
+                        || now_secs().saturating_sub(activity.load(Ordering::Relaxed)) < 10,
+                ),
                 net_rx: round1(rx_bytes as f64 / elapsed),
                 net_tx: round1(tx_bytes as f64 / elapsed),
                 net_rx_total: rx_total,
                 net_tx_total: tx_total,
                 ping,
+                ping_ts: ping_ts.load(Ordering::Relaxed),
                 uptime: System::uptime(),
                 load: [
                     round2(load.one as f32),
@@ -244,6 +286,7 @@ pub fn spawn_sampler(
 /// works identically on Linux, Windows and macOS.
 pub fn spawn_ping(
     ping_us: Arc<AtomicU32>,
+    ping_ts: Arc<AtomicU64>,
     clients: Arc<AtomicUsize>,
     activity: Arc<AtomicU64>,
     target: String,
@@ -257,6 +300,7 @@ pub fn spawn_ping(
             if active || first {
                 let measured = measure_ping(&target).await;
                 ping_us.store(measured, Ordering::Relaxed);
+                ping_ts.store(now_ms(), Ordering::Relaxed);
                 first = false;
             }
 
@@ -282,9 +326,18 @@ async fn measure_ping(target: &str) -> u32 {
     }
 }
 
-fn hottest_component(components: &Components) -> Option<f32> {
+fn cpu_component_temperature(components: &Components) -> Option<f32> {
     components
         .iter()
+        .filter(|component| {
+            let label = component.label().to_ascii_lowercase();
+            ["cpu", "tctl", "tdie", "coretemp", "k10temp", "package id"]
+                .iter()
+                .any(|part| label.contains(part))
+                && !["gpu", "nvidia", "radeon"]
+                    .iter()
+                    .any(|part| label.contains(part))
+        })
         .filter_map(|component| component.temperature())
         .filter(|value| value.is_finite() && *value > 0.0 && *value < 200.0)
         .fold(None::<f32>, |hottest, value| match hottest {

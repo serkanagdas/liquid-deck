@@ -193,10 +193,10 @@ svg {
 
 .clock {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  flex-direction: row;
+  align-items: baseline;
   justify-self: center;
-  gap: 1px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -220,11 +220,11 @@ svg {
 }
 
 .clock-date {
-  font-size: 8.5px;
+  font-size: clamp(24px, 3vw, 32px);
   font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted-2);
+  letter-spacing: -0.045em;
+  line-height: 1;
+  color: var(--ink);
   white-space: nowrap;
 }
 
@@ -2433,7 +2433,7 @@ body.is-sheet-open {
   }
 
   .clock-date {
-    font-size: 8px;
+    font-size: 25px;
   }
 
   .hero {
