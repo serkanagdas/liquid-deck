@@ -132,20 +132,25 @@ jobs:
           Exec=liquid-deck
           Icon=liquid-deck
           Terminal=true
-          Categories=Utility;System;
+          Categories=Utility;
           Keywords=dashboard;metrics;streamdeck;macro;
           EOF
           cp "$APPDIR/liquid-deck.desktop" "$APPDIR/usr/share/applications/liquid-deck.desktop"
 
-          cat > "$APPDIR/usr/share/metainfo/liquid-deck.appdata.xml" <<'EOF'
+          cat > "$APPDIR/usr/share/metainfo/io.github.serkanagdas.LiquidDeck.appdata.xml" <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <component type="desktop-application">
-            <id>liquid-deck</id>
+            <id>io.github.serkanagdas.LiquidDeck</id>
             <name>Liquid Deck</name>
             <summary>Stream Deck and live hardware dashboard</summary>
+            <metadata_license>CC0-1.0</metadata_license>
+            <project_license>MIT</project_license>
             <description>
               <p>Liquid Deck serves a local dashboard with system metrics, a media player and a configurable macro deck.</p>
             </description>
+            <developer id="io.github.serkanagdas">
+              <name>Serkan Ağdaş</name>
+            </developer>
             <launchable type="desktop-id">liquid-deck.desktop</launchable>
             <url type="homepage">https://github.com/serkanagdas/liquid-deck</url>
             <provides>
@@ -154,6 +159,7 @@ jobs:
             <releases>
               <release version="1.0.0" date="2026-11-07"/>
             </releases>
+            <content_rating type="oars-1.1"/>
           </component>
           EOF
 
