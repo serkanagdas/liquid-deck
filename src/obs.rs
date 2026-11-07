@@ -14,11 +14,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tokio::{net::TcpStream, time::timeout};
-use tokio_tungstenite::{
-    connect_async,
-    tungstenite::Message,
-    MaybeTlsStream, WebSocketStream,
-};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
 use crate::deck::{validate_ws_url, ObsSettings, OBS_OPS};
 
@@ -36,18 +32,16 @@ pub async fn execute(settings: &ObsSettings, op: &str, target: &str) -> Result<S
 
     match timeout(TIMEOUT, session(settings, &op, target.trim())).await {
         Ok(result) => result,
-        Err(_) => Err("OBS WebSocket timed out. Is OBS running and obs-websocket enabled?".to_string()),
+        Err(_) => {
+            Err("OBS WebSocket timed out. Is OBS running and obs-websocket enabled?".to_string())
+        }
     }
 }
 
 async fn session(settings: &ObsSettings, op: &str, target: &str) -> Result<String, String> {
-    let (mut socket, _) = connect_async(settings.url.trim())
-        .await
-        .map_err(|error| {
-            format!(
-                "OBS connect failed: {error}. Check Tools → WebSocket Server Settings in OBS."
-            )
-        })?;
+    let (mut socket, _) = connect_async(settings.url.trim()).await.map_err(|error| {
+        format!("OBS connect failed: {error}. Check Tools → WebSocket Server Settings in OBS.")
+    })?;
 
     let hello = next_json(&mut socket).await?;
     if hello.get("op").and_then(Value::as_u64) != Some(0) {
@@ -74,15 +68,10 @@ async fn session(settings: &ObsSettings, op: &str, target: &str) -> Result<Strin
             .and_then(Value::as_str)
             .ok_or("OBS auth salt missing.")?;
         if settings.password.is_empty() {
-            return Err(
-                "OBS requires a password. Add it under Integrations → OBS.".to_string(),
-            );
+            return Err("OBS requires a password. Add it under Integrations → OBS.".to_string());
         }
-        identify["authentication"] = Value::String(auth_string(
-            &settings.password,
-            salt,
-            challenge,
-        ));
+        identify["authentication"] =
+            Value::String(auth_string(&settings.password, salt, challenge));
     }
 
     send_json(&mut socket, json!({ "op": 1, "d": identify })).await?;
@@ -90,11 +79,7 @@ async fn session(settings: &ObsSettings, op: &str, target: &str) -> Result<Strin
     let identified = next_json(&mut socket).await?;
     match identified.get("op").and_then(Value::as_u64) {
         Some(2) => {}
-        _ => {
-            return Err(
-                "OBS rejected the WebSocket session (check the password).".to_string(),
-            )
-        }
+        _ => return Err("OBS rejected the WebSocket session (check the password).".to_string()),
     }
 
     let (request_type, request_data, label) = request_for(op, target)?;
@@ -122,7 +107,10 @@ async fn session(settings: &ObsSettings, op: &str, target: &str) -> Result<Strin
                 {
                     continue;
                 }
-                let status = message.pointer("/d/requestStatus").cloned().unwrap_or_default();
+                let status = message
+                    .pointer("/d/requestStatus")
+                    .cloned()
+                    .unwrap_or_default();
                 let result = status
                     .get("result")
                     .and_then(Value::as_bool)
@@ -181,9 +169,17 @@ fn request_for(op: &str, target: &str) -> Result<(&'static str, Value, String), 
                 format!("OBS scene → {target}"),
             )
         }
-        "record_start" => ("StartRecord", json!({}), "OBS recording started".to_string()),
+        "record_start" => (
+            "StartRecord",
+            json!({}),
+            "OBS recording started".to_string(),
+        ),
         "record_stop" => ("StopRecord", json!({}), "OBS recording stopped".to_string()),
-        "record_toggle" => ("ToggleRecord", json!({}), "OBS recording toggled".to_string()),
+        "record_toggle" => (
+            "ToggleRecord",
+            json!({}),
+            "OBS recording toggled".to_string(),
+        ),
         "stream_start" => ("StartStream", json!({}), "OBS stream started".to_string()),
         "stream_stop" => ("StopStream", json!({}), "OBS stream stopped".to_string()),
         "stream_toggle" => ("ToggleStream", json!({}), "OBS stream toggled".to_string()),

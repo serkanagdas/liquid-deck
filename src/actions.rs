@@ -169,9 +169,7 @@ impl Executor {
             ActionRequest::DiscordDeafen => key_combo("ctrl+shift+d").await,
             ActionRequest::GameMode { enabled } => game_mode(enabled).await,
             ActionRequest::Url { url } => open_url(&url).await,
-            ActionRequest::Sound { name } => {
-                sounds::play(self.sounds_dir.as_deref(), &name).await
-            }
+            ActionRequest::Sound { name } => sounds::play(self.sounds_dir.as_deref(), &name).await,
             ActionRequest::Obs { op, target } => {
                 let settings = self
                     .obs

@@ -230,8 +230,7 @@ impl DeckState {
     }
 
     pub fn set(&mut self, board: &str, button: &str, active: bool) {
-        self.toggles
-            .insert(Self::toggle_key(board, button), active);
+        self.toggles.insert(Self::toggle_key(board, button), active);
         self.updated_at = now_secs();
     }
 
@@ -244,7 +243,11 @@ impl DeckState {
             }
         }
         self.toggles.retain(|key, _| valid.contains(key));
-        if !config.boards.iter().any(|board| board.id == self.active_board) {
+        if !config
+            .boards
+            .iter()
+            .any(|board| board.id == self.active_board)
+        {
             self.active_board = config.settings.default_board.clone();
         }
     }
@@ -430,16 +433,7 @@ pub fn default_deck() -> DeckConfig {
                 1,
             ),
             button(
-                "editor",
-                "Editor",
-                "VS Code",
-                "code",
-                "blue",
-                "launch",
-                "editor",
-                "",
-                false,
-                1,
+                "editor", "Editor", "VS Code", "code", "blue", "launch", "editor", "", false, 1,
             ),
             button(
                 "files",
@@ -817,8 +811,7 @@ impl DeckConfig {
                     button.amount.clamp(1, 100)
                 };
                 button.span = button.span.clamp(1, 4).min(u32::from(board.columns) as u8);
-                button.id =
-                    unique_id(&button.id, &button.label, button_index, &mut button_ids);
+                button.id = unique_id(&button.id, &button.label, button_index, &mut button_ids);
 
                 validate_button(board.name.as_str(), button)?;
             }
@@ -883,11 +876,7 @@ fn validate_button(board: &str, button: &Button) -> Result<(), String> {
         }
         "panel" => {
             if !PANELS.contains(&button.value.as_str()) {
-                return Err(format!(
-                    "{}: unknown panel “{}”.",
-                    context(),
-                    button.value
-                ));
+                return Err(format!("{}: unknown panel “{}”.", context(), button.value));
             }
         }
         "volume" => {
@@ -1381,10 +1370,9 @@ mod tests {
 
     #[test]
     fn defaults_fill_missing_json_fields() {
-        let config: DeckConfig = serde_json::from_str(
-            r#"{"boards":[{"name":"Only","buttons":[{"label":"Hi"}]}]}"#,
-        )
-        .unwrap();
+        let config: DeckConfig =
+            serde_json::from_str(r#"{"boards":[{"name":"Only","buttons":[{"label":"Hi"}]}]}"#)
+                .unwrap();
         assert_eq!(config.version, CONFIG_VERSION);
         assert_eq!(config.boards.len(), 1);
         assert_eq!(config.boards[0].columns, 4);

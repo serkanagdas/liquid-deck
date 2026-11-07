@@ -83,7 +83,11 @@ pub fn list(dir: Option<&Path>) -> Vec<SoundEntry> {
         .take(500)
         .collect();
 
-    sounds.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+    sounds.sort_by(|a, b| {
+        a.name
+            .to_ascii_lowercase()
+            .cmp(&b.name.to_ascii_lowercase())
+    });
     sounds
 }
 
@@ -98,8 +102,7 @@ pub fn resolve(dir: Option<&Path>, name: &str) -> Result<PathBuf, String> {
     let root = fs::canonicalize(dir)
         .map_err(|_| format!("Sounds directory not found: {}", dir.display()))?;
     let candidate = root.join(name);
-    let path = fs::canonicalize(&candidate)
-        .map_err(|_| format!("Sound not found: {name}"))?;
+    let path = fs::canonicalize(&candidate).map_err(|_| format!("Sound not found: {name}"))?;
     if !path.starts_with(&root) {
         return Err("Sound resolves outside the sounds directory.".to_string());
     }
@@ -183,16 +186,9 @@ fn platform_play(path: &Path) -> Result<(), String> {
         ),
         (
             "mpv",
-            &[
-                OsStr::new("--no-video"),
-                OsStr::new("--really-quiet"),
-                file,
-            ],
+            &[OsStr::new("--no-video"), OsStr::new("--really-quiet"), file],
         ),
-        (
-            "aplay",
-            &[OsStr::new("-q"), file],
-        ),
+        ("aplay", &[OsStr::new("-q"), file]),
     ];
 
     let mut errors = Vec::new();

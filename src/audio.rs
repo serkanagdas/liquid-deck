@@ -118,12 +118,7 @@ async fn platform_apply(op: &str, id: &str, value: u8) -> Result<String, String>
         "app_volume" => {
             let index = validate_index(id)?;
             let level = format!("{value}%");
-            run(
-                "pactl",
-                &["set-sink-input-volume", &index, &level],
-                2_500,
-            )
-            .await?;
+            run("pactl", &["set-sink-input-volume", &index, &level], 2_500).await?;
             Ok(format!("App volume {value}%"))
         }
         "app_mute" => {
@@ -451,7 +446,10 @@ mod tests {
             first_percent("Volume: front-left: 45875 /  70% / -9.29 dB"),
             Some(70)
         );
-        assert_eq!(first_percent("Volume: front-left: 0 /   0% / -inf dB"), Some(0));
+        assert_eq!(
+            first_percent("Volume: front-left: 0 /   0% / -inf dB"),
+            Some(0)
+        );
         assert_eq!(first_percent("Volume: none"), None);
     }
 
