@@ -4,12 +4,13 @@
 
 **A single-binary, cross-platform Stream Deck and live hardware dashboard with an iOS Liquid Glass web UI.**
 
-Liquid Deck runs on the machine you want to monitor, serves an embedded dashboard over HTTP and WebSocket, and turns a phone or tablet — including a Galaxy Note 4 — into an always-on hardware panel and macro deck. There is no Electron, no Node runtime, no external font or asset CDN, and no database. The release binary is about **1.4 MB** and idles at roughly **3 MB RSS**.
+Liquid Deck runs on the machine you want to monitor, serves an embedded dashboard over HTTP and WebSocket, and turns a phone or tablet — including a Galaxy Note 4 — into an always-on hardware panel and macro deck. There is no Electron, no Node runtime, no external font or asset CDN, and no database. The release binary is about **1.7 MB** and idles at roughly **3 MB RSS**.
 
 - Live CPU, RAM, temperature, network throughput, TCP ping, load average and uptime.
+- A now-playing panel that mirrors the PC's media session — cover art, title, artist, progress and play/pause/skip — through GSMTC on Windows, `playerctl` on Linux and AppleScript on macOS.
 - A configurable, multi-board touch deck with a full in-browser editor, nested boards, persistent toggle states, URL launchers, OBS WebSocket v5, a soundboard and a system audio mixer.
 - Discord mute/deafen, media keys, volume, terminal, game mode and custom scripts.
-- AMOLED-black, blurred-glass UI with specular edges, squircle cards and a 1440 × 2560-friendly layout.
+- AMOLED-black, CarPlay-style shell: one compact status strip, a three-tab dock and squircle panels, friendly from a 900 × 430 car display up to 1440 × 2560.
 - WebSocket telemetry with automatic reconnect and an HTTP polling fallback.
 - Optional token authentication, constant-time comparison, a 25 action/second rate limit and a strict action allow-list.
 - Linux, Windows and macOS builds from one Rust codebase.
@@ -60,7 +61,7 @@ Web panelini tarayıcında aç:
 
 ### 2. Frontend Geliştirmesi Nasıl Çalışır?
 
-- Arayüz (`web/index.html`, `web/style.css`, `web/app.js`), `rust-embed` kütüphanesi sayesinde derleme anında doğrudan Rust binary'sinin içine gömülür.
+- Arayüz (`web/index.html`, `web/style.css`, `web/dashboard.css`, `web/app.js`), `rust-embed` kütüphanesi sayesinde derleme anında doğrudan Rust binary'sinin içine gömülür.
 - `web/` klasöründeki dosyaları değiştirdiğinde `cargo run` veya `cargo build` yapman yeterlidir; harici bir `npm run build` veya Node.js adımı **yoktur**.
 - Tüm arayüz **saf Vanilla JavaScript** ve **sıfır harici kütüphane** ile yazılmıştır; harici CDN veya internet bağlantısı gerektirmez.
 
@@ -106,7 +107,7 @@ adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Browser: Galaxy Note 4, phone, tablet or desktop                    │
-│  web/index.html · web/style.css · web/app.js                         │
+│  web/index.html · web/style.css · web/dashboard.css · web/app.js     │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │ HTTP + WebSocket (same origin)
 ┌───────────────────────────────▼──────────────────────────────────────┐
@@ -147,9 +148,11 @@ adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
 | `src/audio.rs` | Audio output/app mixer via `pactl` on Linux, `SwitchAudioSource` + AppleScript on macOS. |
 | `src/obs.rs` | Minimal obs-websocket v5 client: hello, SHA-256 challenge auth, request/response, allow-listed operations. |
 | `src/sounds.rs` | Sound library discovery, path confinement, built-in clips and platform playback. |
+| `src/media.rs` | Now-playing snapshot and cover art from GSMTC (Windows), `playerctl` (Linux) or AppleScript (macOS), with idle-aware polling. |
 | `web/index.html` | Dashboard markup, board switcher, editor/mixer sheets, SVG icon sprite, accessible controls. |
 | `web/style.css` | Liquid Glass design system, AMOLED palette, ambient glow, board/editor/mixer sheets, responsive layout. |
-| `web/app.js` | WebSocket client, reconnect/backoff, polling fallback, large hardware readouts, configurable boards, action deck, editor, mixer, toasts, lock screen. |
+| `web/dashboard.css` | CarPlay-style shell: status strip, three-tab dock, now-playing bar, media page, compact cards and short-viewport rules. |
+| `web/app.js` | WebSocket client, reconnect/backoff, polling fallback, large hardware readouts, now-playing rendering/actions, configurable boards, action deck, editor, mixer, toasts, lock screen. |
 | `web/icon.svg`, `web/icon-*.png`, `web/noise.png` | Embedded icons and grain texture. |
 | `web/manifest.webmanifest` | Installable PWA metadata. |
 | `integrations/note4-panel.sh` | Optional ADB helper for waking/sleeping a Galaxy Note 4 panel. |
@@ -169,6 +172,7 @@ adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
 - On load, the UI reads `/api/health`, restores a token from `localStorage` or `?token=`, and verifies it with `/api/auth` when authentication is enabled. It also fetches `/api/config` so the deck is usable before the WebSocket connects.
 - It opens `ws://host/ws` (or `wss://` on HTTPS). The first message is `hello`, containing the server version, host, OS, action catalog, current history, the full deck configuration, toggle state and sound library.
 - Every `metrics` message updates large CPU/GPU temperature and utilization readouts, compact RAM/network figures, ping, load and uptime. There is no live ring or network chart rendering; history charts are drawn only on demand.
+- The shell has three pages — Sistem, Medya and Action Deck — reachable from the dock or by swiping; `/#media` and `/#deck` deep-link straight to them. The now-playing bar on Sistem mirrors the PC media session and opens the Medya page.
 - Board tabs switch pages without reloading. Long-press a key (or use the sliders button) to open the editor; edits are staged in a draft and saved with `PUT /api/config`.
 - Toggle buttons persist on/off state in `state.json` through `POST /api/state`. Configuration and state changes are broadcast to every connected client.
 - If the WebSocket closes, the client reconnects with exponential backoff (450 ms → 10 s, plus jitter) and polls `/api/metrics` every 2 seconds in the meantime.
@@ -713,6 +717,7 @@ All JSON endpoints return `application/json`. Static files are served from the e
 | `POST` | `/api/audio` | token | Change output, volume or mute. |
 | `GET` | `/api/sounds` | token | Soundboard library. |
 | `GET` | `/api/sound?name=…` | token | Stream one clip. |
+| `GET` | `/api/media/art?v=…` | token | Cover art for the current media session (immutable per version). |
 | `POST` | `/api/obs/test` | token | Test an obs-websocket connection. |
 | `GET` | `/ws` | token | WebSocket telemetry, deck events and action channel. |
 
@@ -767,11 +772,22 @@ or `?token=my-secret` for browser WebSocket handshakes. The token is compared in
   "load": [9.09, 6.94, 5.54],
   "host": "desk",
   "os": "Linux (Ubuntu 24.04)",
-  "iface": "eth0"
+  "iface": "eth0",
+  "media": {
+    "app": "Spotify",
+    "title": "Windowlicker",
+    "artist": "Aphex Twin",
+    "album": "Windowlicker",
+    "playing": true,
+    "pos_ms": 61230,
+    "dur_ms": 366000,
+    "can_seek": true,
+    "art_version": 3
+  }
 }
 ```
 
-`temp` and `ping` may be `null`. A request during the first ~250 ms after startup returns HTTP 503 with `{"ok":false,"error":"warming_up"}`.
+`temp` and `ping` may be `null`; `media` is `null` when no player has a session. When `art_version` is non-zero, `GET /api/media/art?v=<art_version>` returns the cover with a week-long immutable cache. A request during the first ~250 ms after startup returns HTTP 503 with `{"ok":false,"error":"warming_up"}`.
 
 ### `POST /api/action`
 

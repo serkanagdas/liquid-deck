@@ -1,6 +1,7 @@
 /target
 /dist
 /AppDir
+.openchamber/
 *.AppImage
 *.exe
 .DS_Store

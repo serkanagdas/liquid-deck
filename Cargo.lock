@@ -359,6 +359,8 @@ dependencies = [
  "sysinfo",
  "tokio",
  "tokio-tungstenite",
+ "windows",
+ "windows-future",
  "windows-sys",
 ]
 

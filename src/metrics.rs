@@ -71,6 +71,8 @@ pub struct Metrics {
     pub os: String,
     /// Interface carrying the most traffic.
     pub iface: String,
+    /// Currently playing PC media, or `null` when no player has a session.
+    pub media: Option<crate::media::MediaSnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -106,6 +108,7 @@ pub fn spawn_sampler(
     wake: Arc<Notify>,
     ping_us: Arc<AtomicU32>,
     ping_ts: Arc<AtomicU64>,
+    media: crate::media::MediaMonitor,
     config: SamplerConfig,
 ) {
     tokio::spawn(async move {
@@ -244,6 +247,7 @@ pub fn spawn_sampler(
                 host: host.clone(),
                 os: os.clone(),
                 iface: busiest_iface,
+                media: media.current(),
             };
 
             {

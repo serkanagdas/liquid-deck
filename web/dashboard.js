@@ -75,15 +75,24 @@
     document.querySelectorAll(".dialog-fallback[open]").forEach((dialog) => closeDialog(dialog.id));
   });
 
+  const PAGE_ORDER = ["system", "media", "deck"];
+  const PAGE_LABELS = { system: "Sistem", media: "Medya", deck: "Action Deck" };
   function navigate(next) {
+    if (!PAGE_ORDER.includes(next)) next = "system";
     page = next;
     document.body.dataset.page = page;
+    if (location.hash.slice(1) !== page) {
+      history.replaceState(null, "", `#${page}`);
+    }
     $("systemPage").hidden = page !== "system";
+    $("mediaPage").hidden = page !== "media";
     $("deckPage").hidden = page !== "deck";
+    text("pageLabel", PAGE_LABELS[page]);
     document.querySelectorAll("[data-page]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.page === page)));
     document.dispatchEvent(new CustomEvent("liquid:page"));
   }
-  navigate(page);
+  // Deep link: /#media opens the media page directly, so it can be bookmarked.
+  navigate(PAGE_ORDER.includes(location.hash.slice(1)) ? location.hash.slice(1) : "system");
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.page)));
   const pages = $("dashboardPages");
   pages.addEventListener("pointerdown", (event) => {
@@ -105,7 +114,9 @@
     if (swipe) {
       event.preventDefault();
       suppressClickUntil = Date.now() + 500;
-      navigate(dx < 0 ? "deck" : "system");
+      const index = PAGE_ORDER.indexOf(page);
+      const target = dx < 0 ? index + 1 : index - 1;
+      navigate(PAGE_ORDER[Math.max(0, Math.min(PAGE_ORDER.length - 1, target))]);
     }
     gesture = null;
   });
@@ -274,5 +285,5 @@
     else paint();
   });
   window.addEventListener("pagehide", () => { if (logger) logger.flush(); });
-  window.LiquidDashboard = { ingest, tick, setPingTarget(target) { document.querySelector(".network-strip").title = `TCP hedefi: ${target || "İnternet"}`; } };
+  window.LiquidDashboard = { ingest, tick, navigate, setPingTarget(target) { document.querySelector(".network-strip").title = `TCP hedefi: ${target || "İnternet"}`; } };
 })();

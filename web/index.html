@@ -13,83 +13,129 @@
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icon-192.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/style.css?v=7">
-  <link rel="stylesheet" href="/dashboard.css?v=8">
+  <link rel="stylesheet" href="/style.css?v=8">
+  <link rel="stylesheet" href="/dashboard.css?v=10">
 </head>
 <body data-finish="glass" data-scale="large">
   <div class="app">
-    <header class="topbar">
-      <div class="brand">
+    <header class="statusbar">
+      <div class="status-brand">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-        <span class="brand-copy">
-          <span class="eyebrow" id="brandHost">Hardware Dashboard</span>
-          <h1>Liquid Deck</h1>
-        </span>
+        <span class="status-host" id="brandHost">Liquid Deck</span>
       </div>
-
-      <div class="clock" aria-label="Local time">
-        <span class="clock-time"><span id="clockTime">--:--</span><span class="clock-seconds" id="clockSeconds">00</span></span>
-        <span class="clock-date" id="clockDate">—</span>
+      <div class="status-page" id="pageLabel">Sistem</div>
+      <div class="status-actions">
+        <span class="status-clock"><span id="clockTime">--:--</span></span>
+        <button class="status-btn" id="historyOpen" type="button" aria-label="Son 24 saat" title="Son 24 saat">
+          <svg aria-hidden="true"><use href="#icon-history"></use></svg>
+        </button>
+        <button class="status-btn" id="preferencesOpen" type="button" aria-label="Ayarlar" title="Ayarlar">
+          <svg aria-hidden="true"><use href="#icon-settings"></use></svg>
+        </button>
       </div>
-
     </header>
 
-    <nav class="dashboard-nav" aria-label="Dashboard sayfaları">
-      <button type="button" data-page="system" aria-pressed="true">01 · Sistem</button>
-      <button type="button" data-page="deck" aria-pressed="false">02 · Action Deck</button>
-      <button type="button" id="historyOpen">24 saat</button>
-      <button type="button" id="preferencesOpen" aria-label="Görünüm ve kayıt ayarları">Ayarlar</button>
-    </nav>
     <main id="dashboardPages">
       <div class="dashboard-page system-page" id="systemPage">
-      <section class="hero" aria-label="Live hardware metrics">
-        <article class="card hardware-card cpu-card" id="cpuCard" data-accent="orange" role="button" tabindex="0" aria-haspopup="dialog" aria-label="CPU sıcaklığı ve kullanımı; ayrıntılar için dokun">
-          <div class="card-head">
-            <span class="card-label">
-              <svg class="label-icon" aria-hidden="true"><use href="#icon-cpu"></use></svg>
-              CPU <small id="cpuBrand" hidden>Ryzen</small>
+        <section class="nowbar" id="nowBar" aria-label="Şimdi çalıyor">
+          <button class="nowbar-main" id="nowBarOpen" type="button" aria-label="Medya sayfasını aç">
+            <span class="nowbar-art" id="nowBarArt"><svg aria-hidden="true"><use href="#icon-music"></use></svg></span>
+            <span class="nowbar-copy">
+              <strong id="nowBarTitle">Şimdi çalan yok</strong>
+              <span id="nowBarArtist">PC medyası bekleniyor</span>
             </span>
-            <span class="hardware-priority">01</span>
+          </button>
+          <div class="nowbar-controls">
+            <button type="button" class="nowbar-btn" data-media="previous" aria-label="Önceki parça"><svg aria-hidden="true"><use href="#icon-previous"></use></svg></button>
+            <button type="button" class="nowbar-btn nowbar-play" data-media="play_pause" aria-label="Oynat veya duraklat"><svg aria-hidden="true"><use href="#icon-play"></use></svg></button>
+            <button type="button" class="nowbar-btn" data-media="next" aria-label="Sonraki parça"><svg aria-hidden="true"><use href="#icon-next"></use></svg></button>
           </div>
-          <p class="hardware-subtitle" id="cpuCores">İşlemci</p>
-          <div class="hardware-readings">
-            <div class="temperature-reading"><span class="reading-label">Sıcaklık</span><div class="temperature-text"><strong id="cpuTemp" data-heat="unknown">—</strong><span class="temperature-unit">°C</span></div></div>
-            <div class="usage-reading"><span class="reading-label">Kullanım</span><div class="usage-text"><strong id="cpuValue">—</strong><span class="usage-unit">%</span></div><span class="fan-line" id="cpuFan" hidden>Fan —</span></div>
-          </div>
-          <div class="hardware-bottom cpu-sensor-info"><span id="cpuSensorLabel">CPU sensörü bekleniyor</span></div>
-        </article>
+        </section>
 
-        <article class="card hardware-card gpu-card" id="gpuCard" aria-label="NVIDIA GPU sıcaklığı ve kullanımı; ayrıntılar için dokun" role="button" tabindex="0" aria-haspopup="dialog">
-          <div class="card-head">
-            <span class="card-label">
-              <svg class="gpu-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6S2 12 2 12Zm10-4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z" fill="currentColor"/></svg>
-              GPU <small id="gpuBrand">NVIDIA</small>
-            </span>
-            <span class="hardware-priority">02</span>
+        <section class="hero" aria-label="Live hardware metrics">
+          <article class="card hardware-card cpu-card" id="cpuCard" data-accent="orange" role="button" tabindex="0" aria-haspopup="dialog" aria-label="CPU sıcaklığı ve kullanımı; ayrıntılar için dokun">
+            <div class="card-head">
+              <span class="card-label">
+                <svg class="label-icon" aria-hidden="true"><use href="#icon-cpu"></use></svg>
+                CPU <small id="cpuBrand" hidden>Ryzen</small>
+              </span>
+              <span class="hardware-priority">01</span>
+            </div>
+            <p class="hardware-subtitle" id="cpuCores">İşlemci</p>
+            <div class="hardware-readings">
+              <div class="temperature-reading"><span class="reading-label">Sıcaklık</span><div class="temperature-text"><strong id="cpuTemp" data-heat="unknown">—</strong><span class="temperature-unit">°C</span></div></div>
+              <div class="usage-reading"><span class="reading-label">Kullanım</span><div class="usage-text"><strong id="cpuValue">—</strong><span class="usage-unit">%</span></div><span class="fan-line" id="cpuFan" hidden>Fan —</span></div>
+            </div>
+            <div class="hardware-bottom cpu-sensor-info"><span id="cpuSensorLabel">CPU sensörü bekleniyor</span></div>
+          </article>
+
+          <article class="card hardware-card gpu-card" id="gpuCard" aria-label="NVIDIA GPU sıcaklığı ve kullanımı; ayrıntılar için dokun" role="button" tabindex="0" aria-haspopup="dialog">
+            <div class="card-head">
+              <span class="card-label">
+                <svg class="gpu-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6S2 12 2 12Zm10-4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z" fill="currentColor"/></svg>
+                GPU <small id="gpuBrand">NVIDIA</small>
+              </span>
+              <span class="hardware-priority">02</span>
+            </div>
+            <h3 class="hardware-subtitle" id="gpuName">GPU bekleniyor</h3>
+            <div class="hardware-readings">
+              <div class="temperature-reading"><span class="reading-label">Sıcaklık</span><div class="temperature-text"><strong id="gpuTemp" data-heat="unknown">—</strong><span class="temperature-unit">°C</span></div></div>
+              <div class="usage-reading"><span class="reading-label">Kullanım</span><div class="usage-text"><strong id="gpuUsage">—</strong><span class="usage-unit">%</span></div><span class="fan-line" id="gpuFan" hidden>Fan —</span></div>
+            </div>
+            <div class="hardware-bottom">
+              <div class="gpu-memory-inline"><span>VRAM</span><strong id="gpuMemory">Veri yok</strong></div>
+              <dl class="gpu-details"><div><dt>Çekirdek</dt><dd id="gpuClock">— MHz</dd></div><div><dt>Bellek</dt><dd id="gpuMemClock">— MHz</dd></div><div><dt>Güç / Limit</dt><dd id="gpuPower">— W</dd></div></dl>
+            </div>
+            <small id="gpuStatus" role="status" hidden></small>
+          </article>
+        </section>
+
+        <section class="card network-strip" aria-label="İnternet hızı ve bağlantı kalitesi">
+          <div class="strip-rates" id="netStrip" role="button" tabindex="0" aria-haspopup="dialog" aria-label="İnternet ayrıntıları ve grafik için dokun">
+            <div><span class="strip-label">↓ İndirme</span><strong class="download"><span id="netDownValue">—</span> <small id="netDownUnit">B/s</small></strong></div>
+            <div><span class="strip-label">↑ Yükleme</span><strong class="upload"><span id="netUpValue">—</span> <small id="netUpUnit">B/s</small></strong></div>
+            <div><span class="strip-label">TCP Ping</span><strong><span id="stripPing">—</span> <small>ms</small></strong></div>
           </div>
-          <h3 class="hardware-subtitle" id="gpuName">GPU bekleniyor</h3>
-          <div class="hardware-readings">
-            <div class="temperature-reading"><span class="reading-label">Sıcaklık</span><div class="temperature-text"><strong id="gpuTemp" data-heat="unknown">—</strong><span class="temperature-unit">°C</span></div></div>
-            <div class="usage-reading"><span class="reading-label">Kullanım</span><div class="usage-text"><strong id="gpuUsage">—</strong><span class="usage-unit">%</span></div><span class="fan-line" id="gpuFan" hidden>Fan —</span></div>
-          </div>
-          <div class="hardware-bottom">
-            <div class="gpu-memory-inline"><span>VRAM</span><strong id="gpuMemory">Veri yok</strong></div>
-            <dl class="gpu-details"><div><dt>Çekirdek</dt><dd id="gpuClock">— MHz</dd></div><div><dt>Bellek</dt><dd id="gpuMemClock">— MHz</dd></div><div><dt>Güç / Limit</dt><dd id="gpuPower">— W</dd></div></dl>
-          </div>
-          <small id="gpuStatus" role="status" hidden></small>
-        </article>
-      </section>
+          <div class="ram-compact"><span class="strip-label">RAM</span><strong><span id="ramValue">—</span> <small>%</small></strong><small id="ramSummary">— GB</small></div>
+        </section>
+        <footer class="dashboard-hint"><span>Sistem · Medya · Deck</span><span id="localLogStatus">Yerel kayıt hazırlanıyor</span></footer>
       </div>
 
-      <section class="deck-section dashboard-page" id="deckPage" aria-labelledby="deckTitle" hidden>
-        <div class="section-head">
-          <h2 id="deckTitle">Action Deck</h2>
-          <span class="section-note" id="deckNote">Dokun: çalıştır · Uzun bas: düzenle</span>
+      <section class="dashboard-page media-page" id="mediaPage" aria-label="PC medyası" hidden>
+        <div class="media-stage">
+          <div class="media-art-wrap">
+            <div class="media-art" id="mediaArt"><svg aria-hidden="true"><use href="#icon-music"></use></svg></div>
+            <span class="media-app" id="mediaSource">PC</span>
+          </div>
+          <div class="media-copy">
+            <p class="media-eyebrow">Şimdi çalıyor</p>
+            <h1 class="media-title" id="mediaTitle">Şimdi çalan yok</h1>
+            <p class="media-artist" id="mediaArtist">Bir uygulamada müzik başlatın</p>
+            <p class="media-album" id="mediaAlbum"></p>
+            <div class="media-progress">
+              <span id="mediaPos">0:00</span>
+              <div class="media-track"><i id="mediaBar"></i></div>
+              <span id="mediaDur">0:00</span>
+            </div>
+            <div class="media-controls">
+              <button type="button" class="media-btn" data-media="previous" aria-label="Önceki parça"><svg aria-hidden="true"><use href="#icon-previous"></use></svg></button>
+              <button type="button" class="media-btn media-btn-main" data-media="play_pause" aria-label="Oynat veya duraklat"><svg aria-hidden="true"><use href="#icon-play"></use></svg></button>
+              <button type="button" class="media-btn" data-media="next" aria-label="Sonraki parça"><svg aria-hidden="true"><use href="#icon-next"></use></svg></button>
+            </div>
+            <div class="media-foot">
+              <button type="button" class="volume-btn" data-volume="down" aria-label="Sesi azalt"><svg aria-hidden="true"><use href="#icon-volume-down"></use></svg></button>
+              <span class="media-hint">PC sesi</span>
+              <button type="button" class="volume-btn" data-volume="up" aria-label="Sesi arttır"><svg aria-hidden="true"><use href="#icon-volume-up"></use></svg></button>
+            </div>
+          </div>
         </div>
+      </section>
 
+      <section class="deck-section dashboard-page" id="deckPage" aria-label="Action Deck" hidden>
         <div class="board-bar">
           <div class="board-tabs" id="boardTabs" role="tablist" aria-label="Boards"></div>
           <div class="board-tools">
+            <span class="section-note" id="deckNote"></span>
             <button class="icon-btn" id="audioBtn" type="button" aria-label="Audio mixer" title="Audio mixer">
               <svg aria-hidden="true"><use href="#icon-speaker"></use></svg>
             </button>
@@ -101,17 +147,19 @@
 
         <div class="deck" id="deck" role="tabpanel" aria-label="Action buttons"></div>
       </section>
-
     </main>
-    <section class="card network-strip" aria-label="İnternet hızı ve bağlantı kalitesi">
-      <div class="strip-rates" id="netStrip" role="button" tabindex="0" aria-haspopup="dialog" aria-label="İnternet ayrıntıları ve grafik için dokun">
-        <div><span class="strip-label">↓ İndirme</span><strong class="download"><span id="netDownValue">—</span> <small id="netDownUnit">B/s</small></strong></div>
-        <div><span class="strip-label">↑ Yükleme</span><strong class="upload"><span id="netUpValue">—</span> <small id="netUpUnit">B/s</small></strong></div>
-        <div><span class="strip-label">TCP Ping</span><strong><span id="stripPing">—</span> <small>ms</small></strong></div>
-      </div>
-      <div class="ram-compact"><span class="strip-label">RAM</span><strong><span id="ramValue">—</span> <small>%</small></strong><small id="ramSummary">— GB</small></div>
-    </section>
-    <footer class="dashboard-hint"><span>← Sistem / Action Deck →</span><span id="localLogStatus">Yerel kayıt hazırlanıyor</span></footer>
+
+    <nav class="dock" aria-label="Sayfalar">
+      <button type="button" data-page="system" aria-pressed="true">
+        <svg aria-hidden="true"><use href="#icon-activity"></use></svg><span>Sistem</span>
+      </button>
+      <button type="button" data-page="media" aria-pressed="false">
+        <svg aria-hidden="true"><use href="#icon-music"></use></svg><span>Medya</span>
+      </button>
+      <button type="button" data-page="deck" aria-pressed="false">
+        <svg aria-hidden="true"><use href="#icon-grid"></use></svg><span>Deck</span>
+      </button>
+    </nav>
   </div>
 
   <dialog class="dashboard-dialog" id="preferencesDialog" aria-labelledby="preferencesTitle">
@@ -354,6 +402,11 @@
       <circle cx="12" cy="12" r="3.2"></circle>
       <path d="M12 2.8v3M12 18.2v3M4.5 7.2l2.6 1.5M16.9 15.3l2.6 1.5M4.5 16.8l2.6-1.5M16.9 8.7l2.6-1.5"></path>
     </symbol>
+    <symbol id="icon-history" viewBox="0 0 24 24">
+      <path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"></path>
+      <path d="M3.5 4.5v5h5"></path>
+      <path d="M12 7.5V12l3 2"></path>
+    </symbol>
     <symbol id="icon-sound" viewBox="0 0 24 24">
       <path d="M3 12h2.2l1.8-5.5 2.7 11 2.3-8 1.7 2.5H21"></path>
     </symbol>
@@ -402,7 +455,7 @@
   </svg>
 
   <script src="/history.js?v=5" defer></script>
-  <script src="/dashboard.js?v=5" defer></script>
-  <script src="/app.js?v=10" defer></script>
+  <script src="/dashboard.js?v=7" defer></script>
+  <script src="/app.js?v=11" defer></script>
 </body>
 </html>

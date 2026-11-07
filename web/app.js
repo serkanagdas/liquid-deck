@@ -189,6 +189,21 @@
     deckNote: $("#deckNote"),
     toasts: $("#toasts"),
 
+    nowBar: $("#nowBar"),
+    nowBarOpen: $("#nowBarOpen"),
+    nowBarArt: $("#nowBarArt"),
+    nowBarTitle: $("#nowBarTitle"),
+    nowBarArtist: $("#nowBarArtist"),
+    mediaPage: $("#mediaPage"),
+    mediaArt: $("#mediaArt"),
+    mediaTitle: $("#mediaTitle"),
+    mediaArtist: $("#mediaArtist"),
+    mediaAlbum: $("#mediaAlbum"),
+    mediaSource: $("#mediaSource"),
+    mediaPos: $("#mediaPos"),
+    mediaDur: $("#mediaDur"),
+    mediaBar: $("#mediaBar"),
+
     sysHost: $("#sysHost"),
     sysOs: $("#sysOs"),
     sysUptime: $("#sysUptime"),
@@ -273,11 +288,14 @@
     bindLock();
     bindDetail();
     bindNetworkEvents();
+    bindMedia();
     document.addEventListener("liquid:page", () => {
       if (state.metrics) applyMetrics(state.metrics, { push: false });
+      paintMediaProgress();
     });
     updateClock();
     setInterval(updateClock, 1000);
+    setInterval(paintMediaProgress, 1000);
     setConnection("connecting");
 
     const health = await fetch("/api/health", { cache: "no-store" })
@@ -627,6 +645,7 @@
     if (window.LiquidDashboard) window.LiquidDashboard.ingest(metrics, options.push !== false);
     if (document.hidden) return;
     renderConnectionMetrics(metrics);
+    renderMedia(metrics.media);
     if (state.detailMode) renderDetail();
     if (document.body.dataset.page === "deck") return;
     renderGpu(metrics.gpu);
@@ -635,13 +654,13 @@
     setText(els.cpuValue, String(Math.round(cpu)));
 
     const temperature = Number(metrics.temp);
+    const hasTemperature = Number.isFinite(temperature) && temperature > 0;
     setText(
       els.cpuTemp,
-      Number.isFinite(temperature) && temperature > 0
-        ? String(Math.round(temperature))
-        : "—",
+      hasTemperature ? String(Math.round(temperature)) : "—",
     );
-    els.cpuTemp.dataset.wide = String(Number.isFinite(temperature) && temperature >= 100);
+    els.cpuTemp.dataset.empty = String(!hasTemperature);
+    els.cpuTemp.dataset.wide = String(hasTemperature && temperature >= 100);
     setText(els.cpuSensorLabel, metrics.temp_source || "CPU sensörü okunamıyor");
     renderFanPercentLine(els.cpuFan, metrics.cpu_fan_pct);
 
@@ -681,12 +700,202 @@
     setText(els.sysPing, valid ? `${display} ms` : "—");
   }
 
+  // -------------------------------------------------------------------------
+  // Now playing (PC media session)
+  // -------------------------------------------------------------------------
+
+  const mediaState = {
+    snapshot: null,
+    artVersion: -1,
+    title: "",
+    pos: 0,
+    dur: 0,
+    playing: false,
+    receivedAt: 0,
+    holdUntil: 0,
+    holdPlaying: false,
+  };
+
+  function bindMedia() {
+    document.addEventListener("click", (event) => {
+      const command = event.target.closest("[data-media]");
+      if (command) {
+        event.preventDefault();
+        runMediaCommand(command.dataset.media);
+        return;
+      }
+      const volume = event.target.closest("[data-volume]");
+      if (volume) {
+        event.preventDefault();
+        runVolume(volume.dataset.volume);
+        return;
+      }
+      if (event.target.closest("#nowBarOpen")) {
+        if (window.LiquidDashboard) window.LiquidDashboard.navigate("media");
+      }
+    });
+  }
+
+  async function runMediaCommand(command) {
+    if (!command) return;
+    vibrate(8);
+    const previous = mediaState.playing;
+    if (command === "play_pause") {
+      const next = !previous;
+      mediaState.holdUntil = Date.now() + 1600;
+      mediaState.holdPlaying = next;
+      mediaState.playing = next;
+      mediaState.receivedAt = Date.now();
+      setMediaIcon(next);
+      paintMediaProgress();
+    }
+    const result = await sendAction({ action: "media", command });
+    if (!result || !result.ok) {
+      if (command === "play_pause") {
+        mediaState.holdUntil = 0;
+        mediaState.playing = previous;
+        setMediaIcon(previous);
+        paintMediaProgress();
+      }
+      toast((result && result.message) || "Medya denetimi başarısız", "error");
+    }
+  }
+
+  async function runVolume(direction) {
+    vibrate(8);
+    const result = await sendAction({
+      action: "volume",
+      direction: direction === "down" ? "down" : "up",
+      step: 5,
+    });
+    if (!result || !result.ok) {
+      toast((result && result.message) || "Ses denetimi başarısız", "error");
+    }
+  }
+
+  function renderMedia(value) {
+    const snapshot = value && typeof value === "object" ? value : null;
+    mediaState.snapshot = snapshot;
+    const title = snapshot && snapshot.title ? String(snapshot.title) : "";
+    const has = Boolean(title);
+    const artist = has && snapshot.artist ? String(snapshot.artist) : "";
+    const album = has && snapshot.album ? String(snapshot.album) : "";
+    const app = has && snapshot.app ? String(snapshot.app) : "";
+    const dur = has && Number.isFinite(Number(snapshot.dur_ms)) ? Math.max(0, Number(snapshot.dur_ms)) : 0;
+    const pos = has && Number.isFinite(Number(snapshot.pos_ms)) ? Math.max(0, Number(snapshot.pos_ms)) : 0;
+    let playing = has && Boolean(snapshot.playing);
+
+    mediaState.title = title;
+    mediaState.pos = pos;
+    mediaState.dur = dur;
+    mediaState.receivedAt = Date.now();
+    if (Date.now() < mediaState.holdUntil) {
+      playing = mediaState.holdPlaying;
+    } else {
+      mediaState.holdUntil = 0;
+      mediaState.playing = playing;
+    }
+
+    document.body.classList.toggle("has-media", has);
+    document.body.classList.toggle("media-playing", playing);
+
+    const fallbackTitle = "Şimdi çalan yok";
+    setText(els.nowBarTitle, has ? title : fallbackTitle);
+    setText(els.nowBarArtist, has ? [artist, app].filter(Boolean).join(" · ") || "PC medyası" : "PC medyası bekleniyor");
+    setText(els.mediaTitle, has ? title : fallbackTitle);
+    setText(els.mediaArtist, has ? artist || "Bilinmeyen sanatçı" : "Bir uygulamada müzik başlatın");
+    setText(els.mediaAlbum, album);
+    setText(els.mediaSource, app || "PC");
+    els.mediaAlbum.hidden = !album;
+
+    const artVersion = has && Number(snapshot.art_version) ? Number(snapshot.art_version) : 0;
+    if (artVersion !== mediaState.artVersion) {
+      mediaState.artVersion = artVersion;
+      const url = artVersion ? mediaArtUrl(artVersion) : "";
+      applyCoverArt(els.nowBarArt, url);
+      applyCoverArt(els.mediaArt, url);
+      if (els.mediaPage) {
+        els.mediaPage.style.setProperty("--art-url", url ? `url("${url}")` : "none");
+      }
+    }
+
+    setMediaIcon(playing);
+    labelMediaButtons(playing);
+    paintMediaProgress();
+  }
+
+  function mediaArtUrl(version) {
+    const params = new URLSearchParams({ v: String(version) });
+    if (state.token) params.set("token", state.token);
+    return `/api/media/art?${params.toString()}`;
+  }
+
+  function applyCoverArt(node, url) {
+    if (!node) return;
+    if (!url) {
+      node.style.backgroundImage = "";
+      node.classList.remove("has-art");
+      return;
+    }
+    const image = new Image();
+    image.onload = () => {
+      node.style.backgroundImage = `url("${url}")`;
+      node.classList.add("has-art");
+    };
+    image.onerror = () => {
+      node.style.backgroundImage = "";
+      node.classList.remove("has-art");
+    };
+    image.src = url;
+  }
+
+  function setMediaIcon(playing) {
+    const icon = playing ? "#icon-pause" : "#icon-play";
+    document.querySelectorAll("[data-media='play_pause'] use").forEach((use) => {
+      use.setAttribute("href", icon);
+    });
+  }
+
+  function labelMediaButtons(playing) {
+    const label = playing ? "Duraklat" : "Oynat";
+    document.querySelectorAll("[data-media='play_pause']").forEach((button) => {
+      button.setAttribute("aria-label", label);
+      button.title = label;
+    });
+  }
+
+  function currentMediaPosition() {
+    if (!mediaState.playing) return mediaState.pos;
+    const elapsed = Math.max(0, Date.now() - mediaState.receivedAt);
+    const position = mediaState.pos + elapsed;
+    return mediaState.dur > 0 ? Math.min(mediaState.dur, position) : position;
+  }
+
+  function paintMediaProgress() {
+    const position = currentMediaPosition();
+    const duration = mediaState.dur;
+    const percent = duration > 0 ? clamp((position / duration) * 100, 0, 100) : 0;
+    if (els.mediaBar) els.mediaBar.style.width = `${percent}%`;
+    setText(els.mediaPos, formatClock(position));
+    setText(els.mediaDur, formatClock(duration));
+  }
+
+  function formatClock(milliseconds) {
+    const total = Math.max(0, Math.round((Number(milliseconds) || 0) / 1000));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    const pad = (value) => String(value).padStart(2, "0");
+    return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
+  }
+
   function renderGpu(value) {
     const gpu = value || {};
     const number = (value) => typeof value === "number" && Number.isFinite(value);
     setText(els.gpuName, gpu.name || "GPU verisi yok");
     setText(els.gpuUsage, number(gpu.usage) ? String(Math.round(gpu.usage)) : "—");
     setText(els.gpuTemp, number(gpu.temp) ? String(Math.round(gpu.temp)) : "—");
+    els.gpuTemp.dataset.empty = String(!number(gpu.temp));
     els.gpuTemp.dataset.wide = String(number(gpu.temp) && gpu.temp >= 100);
     els.gpuTemp.dataset.heat = !number(gpu.temp) ? "unknown" : gpu.temp >= 83 ? "hot" : gpu.temp >= 70 ? "warm" : "cool";
     setText(els.gpuMemory, formatMemoryPair(gpu.memory_used, gpu.memory_total));
@@ -1101,7 +1310,7 @@
 
     els.boardTabs.innerHTML = parts.join("");
     if (els.deckNote) {
-      setText(els.deckNote, state.boardStack.length ? "Nested board · Back to return" : "Tap to trigger · long-press to edit");
+      setText(els.deckNote, state.boardStack.length ? "İç panel · Geri ile dön" : "Dokun: çalıştır · Uzun bas: düzenle");
     }
   }
 

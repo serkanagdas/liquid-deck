@@ -8,9 +8,10 @@
 
 mod actions;
 mod audio;
-mod deck;
 mod cpu_temp;
+mod deck;
 mod gpu;
+mod media;
 mod metrics;
 mod obs;
 mod pawn;
@@ -91,6 +92,7 @@ struct AppState {
     gate: Arc<Mutex<ActionGate>>,
     deck: Arc<RwLock<DeckConfig>>,
     deck_state: Arc<RwLock<DeckState>>,
+    media: media::MediaMonitor,
 }
 
 impl AppState {
@@ -158,20 +160,31 @@ impl Drop for ClientGuard {
 fn main() {
     #[cfg(windows)]
     if env::args().any(|arg| arg == "--cpu-sensor-helper") {
-        if cpu_temp::run_helper().is_err() { std::process::exit(1); }
+        if cpu_temp::run_helper().is_err() {
+            std::process::exit(1);
+        }
         return;
     }
     #[cfg(windows)]
     if env::args().any(|arg| matches!(arg.as_str(), "--enable-startup" | "--disable-startup")) {
         tray::attach_console();
         let enable = env::args().any(|arg| arg == "--enable-startup");
-        if let Err(error) = startup::set_enabled(enable) { tray::show_error(&error); std::process::exit(1); }
-        println!("Windows logon startup: {}", if enable { "enabled" } else { "disabled" });
+        if let Err(error) = startup::set_enabled(enable) {
+            tray::show_error(&error);
+            std::process::exit(1);
+        }
+        println!(
+            "Windows logon startup: {}",
+            if enable { "enabled" } else { "disabled" }
+        );
         return;
     }
     #[cfg(windows)]
     let console = env::args().any(|arg| {
-        matches!(arg.as_str(), "--console" | "--help" | "-h" | "--version" | "-V")
+        matches!(
+            arg.as_str(),
+            "--console" | "--help" | "-h" | "--version" | "-V"
+        )
     });
     #[cfg(windows)]
     if console {
@@ -198,16 +211,26 @@ fn main() {
     }
 }
 
-async fn run(config: Config, shutdown: Arc<Notify>, ready: Option<tokio::sync::oneshot::Sender<()>>) -> Result<(), String> {
+async fn run(
+    config: Config,
+    shutdown: Arc<Notify>,
+    ready: Option<tokio::sync::oneshot::Sender<()>>,
+) -> Result<(), String> {
     let bind = config.bind;
 
     let (deck_config, warning) = deck::load_or_default(&config.deck_path);
     if let Some(error) = warning {
-        eprintln!("liquid-deck: ignoring {} ({error}); using built-in deck.", config.deck_path.display());
+        eprintln!(
+            "liquid-deck: ignoring {} ({error}); using built-in deck.",
+            config.deck_path.display()
+        );
     }
     if !config.deck_path.exists() {
         if let Err(error) = deck::save_config(&config.deck_path, &deck_config) {
-            eprintln!("liquid-deck: cannot create {}: {error}", config.deck_path.display());
+            eprintln!(
+                "liquid-deck: cannot create {}: {error}",
+                config.deck_path.display()
+            );
         }
     }
     let mut deck_state = deck::load_state(&config.state_path);
@@ -235,6 +258,8 @@ async fn run(config: Config, shutdown: Arc<Notify>, ready: Option<tokio::sync::o
         deck_config.settings.obs.clone(),
     ));
 
+    let media = media::MediaMonitor::spawn(clients.clone(), activity.clone());
+
     let state = AppState {
         tx: tx.clone(),
         events,
@@ -248,6 +273,7 @@ async fn run(config: Config, shutdown: Arc<Notify>, ready: Option<tokio::sync::o
         gate: Arc::new(Mutex::new(ActionGate::new())),
         deck: Arc::new(RwLock::new(deck_config)),
         deck_state: Arc::new(RwLock::new(deck_state)),
+        media: media.clone(),
     };
 
     metrics::spawn_sampler(
@@ -259,12 +285,19 @@ async fn run(config: Config, shutdown: Arc<Notify>, ready: Option<tokio::sync::o
         wake,
         ping_us.clone(),
         ping_ts.clone(),
+        media,
         metrics::SamplerConfig {
             sample_ms: config.sample_ms,
             idle_ms: config.idle_ms,
         },
     );
-    metrics::spawn_ping(ping_us, ping_ts, clients, activity, config.ping_target.clone());
+    metrics::spawn_ping(
+        ping_us,
+        ping_ts,
+        clients,
+        activity,
+        config.ping_target.clone(),
+    );
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
@@ -279,6 +312,7 @@ async fn run(config: Config, shutdown: Arc<Notify>, ready: Option<tokio::sync::o
         .route("/api/audio", get(audio_handler).post(audio_action_handler))
         .route("/api/sounds", get(sounds_handler))
         .route("/api/sound", get(sound_file_handler))
+        .route("/api/media/art", get(media_art_handler))
         .route("/api/obs/test", post(obs_test_handler))
         .fallback(static_handler)
         .layer(DefaultBodyLimit::max(128 * 1024))
@@ -293,7 +327,9 @@ async fn run(config: Config, shutdown: Arc<Notify>, ready: Option<tokio::sync::o
         .map_err(|error| format!("cannot read local address: {error}"))?;
 
     print_banner(&config, local).await;
-    if let Some(ready) = ready { let _ = ready.send(()); }
+    if let Some(ready) = ready {
+        let _ = ready.send(());
+    }
 
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
@@ -590,9 +626,7 @@ async fn state_handler(
             .boards
             .iter()
             .find(|candidate| candidate.id == board)
-            .is_some_and(|candidate| {
-                candidate.buttons.iter().any(|entry| entry.id == button)
-            });
+            .is_some_and(|candidate| candidate.buttons.iter().any(|entry| entry.id == button));
         if !known {
             return (
                 StatusCode::BAD_REQUEST,
@@ -717,6 +751,42 @@ async fn sound_file_handler(
     );
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     headers.insert(header::ACCEPT_RANGES, HeaderValue::from_static("none"));
+    if let Ok(value) = HeaderValue::from_str(&length.to_string()) {
+        headers.insert(header::CONTENT_LENGTH, value);
+    }
+    response
+}
+
+/// Cover art for the current media session. The `v` query is the art version
+/// from the metrics snapshot, so the response can be cached forever.
+async fn media_art_handler(
+    State(state): State<AppState>,
+    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    if !state.authorized(&headers, query.get("token").map(String::as_str)) {
+        return unauthorized();
+    }
+
+    let version = query.get("v").and_then(|value| value.parse::<u64>().ok());
+    let Some(art) = state.media.art(version) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "ok": false, "message": "No cover art." })),
+        )
+            .into_response();
+    };
+
+    let length = art.bytes.len();
+    let mut response = Response::new(Body::from(art.bytes.clone()));
+    let headers = response.headers_mut();
+    let mime =
+        HeaderValue::from_str(&art.mime).unwrap_or_else(|_| HeaderValue::from_static("image/jpeg"));
+    headers.insert(header::CONTENT_TYPE, mime);
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=604800, immutable"),
+    );
     if let Ok(value) = HeaderValue::from_str(&length.to_string()) {
         headers.insert(header::CONTENT_LENGTH, value);
     }
@@ -1027,7 +1097,10 @@ async fn static_handler(method: Method, uri: Uri, headers: HeaderMap) -> Respons
 
     let data = file.data;
     let tag = etag(&data);
-    let cache = if asset_path == "index.html" || asset_path.ends_with(".js") || asset_path.ends_with(".css") {
+    let cache = if asset_path == "index.html"
+        || asset_path.ends_with(".js")
+        || asset_path.ends_with(".css")
+    {
         "no-cache"
     } else {
         "public, max-age=3600"
