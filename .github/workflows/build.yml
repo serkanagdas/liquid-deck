@@ -113,12 +113,17 @@ jobs:
           rm -rf "$APPDIR"
           mkdir -p "$APPDIR/usr/bin"
           mkdir -p "$APPDIR/usr/share/applications"
+          mkdir -p "$APPDIR/usr/share/metainfo"
           mkdir -p "$APPDIR/usr/share/icons/hicolor/512x512/apps"
 
           cp "target/${{ matrix.target }}/release/liquid-deck" "$APPDIR/usr/bin/liquid-deck"
+          chmod +x "$APPDIR/usr/bin/liquid-deck"
           cp web/icon-512.png "$APPDIR/liquid-deck.png"
+          cp web/icon-512.png "$APPDIR/.DirIcon"
           cp web/icon-512.png "$APPDIR/usr/share/icons/hicolor/512x512/apps/liquid-deck.png"
 
+          # The desktop entry and AppStream data must start at column 0: YAML
+          # strips the block indentation before bash sees the heredoc.
           cat > "$APPDIR/liquid-deck.desktop" <<'EOF'
           [Desktop Entry]
           Type=Application
@@ -131,6 +136,34 @@ jobs:
           Keywords=dashboard;metrics;streamdeck;macro;
           EOF
           cp "$APPDIR/liquid-deck.desktop" "$APPDIR/usr/share/applications/liquid-deck.desktop"
+
+          cat > "$APPDIR/usr/share/metainfo/liquid-deck.appdata.xml" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <component type="desktop-application">
+            <id>liquid-deck</id>
+            <name>Liquid Deck</name>
+            <summary>Stream Deck and live hardware dashboard</summary>
+            <description>
+              <p>Liquid Deck serves a local dashboard with system metrics, a media player and a configurable macro deck.</p>
+            </description>
+            <launchable type="desktop-id">liquid-deck.desktop</launchable>
+            <url type="homepage">https://github.com/serkanagdas/liquid-deck</url>
+            <provides>
+              <binary>liquid-deck</binary>
+            </provides>
+            <releases>
+              <release version="1.0.0" date="2026-11-07"/>
+            </releases>
+          </component>
+          EOF
+
+          # appimagetool refuses an AppDir without an executable AppRun.
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/liquid-deck" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
 
           curl -fsSL -o appimagetool \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
