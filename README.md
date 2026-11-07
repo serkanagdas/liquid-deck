@@ -4,7 +4,7 @@
 
 **A single-binary, cross-platform Stream Deck and live hardware dashboard with an iOS Liquid Glass web UI.**
 
-Liquid Deck runs on the machine you want to monitor, serves an embedded dashboard over HTTP and WebSocket, and turns a phone or tablet — including a Galaxy Note 4 — into an always-on hardware panel and macro deck. There is no Electron, no Node runtime, no external font or asset CDN, and no database. The release binary is about **1.7 MB** and idles at roughly **3 MB RSS**.
+Liquid Deck runs on the machine you want to monitor, serves an embedded dashboard over HTTP and WebSocket, and turns a phone or tablet — including a Galaxy Note 4 — into an always-on hardware panel and macro deck. There is no Electron, no Node runtime, no external font or asset CDN, and no database. The release binary is about **1.8 MB** and idles at roughly **3 MB RSS**.
 
 - Live CPU, RAM, temperature, network throughput, TCP ping, load average and uptime.
 - A now-playing panel that mirrors the PC's media session — cover art, title, artist, progress and play/pause/skip — through GSMTC on Windows, `playerctl` on Linux and AppleScript on macOS.
@@ -1231,7 +1231,7 @@ Measured on the reference Linux x86_64 build in a container, with the release pr
 
 | Metric | Value |
 | --- | --- |
-| Release binary | **1.4 MB** |
+| Release binary | **2.0 MB** (static musl) |
 | RSS, no viewers | **~2.9 MiB** |
 | RSS, one live WebSocket viewer | **~3.1 MiB** |
 | CPU, idle | effectively **0%** (`ps` reports 0.0) |
