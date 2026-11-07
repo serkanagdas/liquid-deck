@@ -7,6 +7,7 @@ use std::sync::atomic::Ordering;
 #[cfg(windows)]
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(windows)]
 pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -15,6 +16,7 @@ pub fn now_ms() -> u64 {
 }
 
 /// Zen 4 THM_TCON_CUR_TMP: whole degrees in bits [31:21], 0.5 °C flag at 19.
+#[cfg(any(windows, test))]
 pub fn decode_zen4_temperature(raw: u32) -> Option<f32> {
     let temperature = (raw >> 21) as f32 * 0.125 - if raw & 0x80000 != 0 { 49.0 } else { 0.0 };
     (temperature > 0.0 && temperature < 125.0).then_some(temperature)

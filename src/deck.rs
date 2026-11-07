@@ -197,23 +197,13 @@ impl Default for Button {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct DeckState {
     /// Keyed as `board_id/button_id`.
     pub toggles: BTreeMap<String, bool>,
     pub active_board: String,
     pub updated_at: u64,
-}
-
-impl Default for DeckState {
-    fn default() -> Self {
-        Self {
-            toggles: BTreeMap::new(),
-            active_board: String::new(),
-            updated_at: 0,
-        }
-    }
 }
 
 impl DeckState {
@@ -257,6 +247,9 @@ impl DeckState {
 // Default deck
 // ---------------------------------------------------------------------------
 
+// The built-in deck spells every field positionally; a struct literal at each
+// of the 32 call sites would be far less readable than one flat helper.
+#[allow(clippy::too_many_arguments)]
 fn button(
     id: &str,
     label: &str,
@@ -898,15 +891,11 @@ fn validate_button(board: &str, button: &Button) -> Result<(), String> {
                 return Err(format!("{}: unknown launch target.", context()));
             }
         }
-        "script" => {
-            if !button.value.is_empty() && !valid_script_name(&button.value) {
-                return Err(format!("{}: invalid script name.", context()));
-            }
+        "script" if !button.value.is_empty() && !valid_script_name(&button.value) => {
+            return Err(format!("{}: invalid script name.", context()));
         }
-        "sound" => {
-            if !button.value.is_empty() && !valid_sound_name(&button.value) {
-                return Err(format!("{}: invalid sound file name.", context()));
-            }
+        "sound" if !button.value.is_empty() && !valid_sound_name(&button.value) => {
+            return Err(format!("{}: invalid sound file name.", context()));
         }
         _ => {}
     }
@@ -1335,8 +1324,10 @@ mod tests {
     #[test]
     fn state_prunes_deleted_buttons() {
         let config = DeckConfig::default();
-        let mut state = DeckState::default();
-        state.active_board = "gaming".to_string();
+        let mut state = DeckState {
+            active_board: "gaming".to_string(),
+            ..Default::default()
+        };
         state.set("gaming", "mic", true);
         state.set("gaming", "gone", true);
         state.set("deleted", "button", true);
@@ -1357,8 +1348,10 @@ mod tests {
         assert_eq!(config, loaded);
 
         let state_path = dir.join("state.json");
-        let mut state = DeckState::default();
-        state.active_board = "media".to_string();
+        let mut state = DeckState {
+            active_board: "media".to_string(),
+            ..Default::default()
+        };
         state.set("media", "play", true);
         save_state(&state_path, &state).unwrap();
         let loaded_state = load_state(&state_path);

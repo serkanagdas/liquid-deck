@@ -156,6 +156,7 @@ struct Polled {
     art: ArtUpdate,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 enum ArtUpdate {
     Keep,
     Clear,
