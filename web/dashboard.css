@@ -432,7 +432,7 @@ body:not(.has-media) .media-title { color: var(--muted); }
 /* ---- Deck page ---- */
 .dashboard-page.deck-section { margin-top: 0; display: flex; flex-direction: column; }
 .deck-section .board-bar { flex: none; }
-.deck-section .deck { flex: 1; min-height: 0; align-content: start; overflow-y: auto; overscroll-behavior: contain; padding: 2px; margin-top: 8px; }
+.deck-section .deck { flex: 1; min-height: 0; align-content: center; align-content: safe center; grid-auto-rows: minmax(84px, 150px); overflow-y: auto; overscroll-behavior: contain; padding: 2px; margin-top: 8px; }
 .deck-section .section-note { flex: none; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The dashboard itself never vertically scrolls. Oversized custom decks and
    editing dialogs keep their own scroll area so up to 32 keys stay reachable. */
