@@ -1,0 +1,4 @@
+# Ship a self-contained Windows binary: the MSVC runtime is linked statically
+# so the release needs no Visual C++ redistributable on the target machine.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
