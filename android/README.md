@@ -19,6 +19,8 @@ browser, not the server.
   sensor draws an empty track with `—` instead of inventing a reading. The same
   scale colours the arc, the number and the detail sheet values:
   **0–30 % green · 30–40 % white · 40–70 % orange · 70–100 % red**.
+  CPU/GPU temperatures use their own scale on both cards and detail panels:
+  **≤ 60 °C green · > 60–80 °C orange · > 80 °C red**.
 - **Medya** — now-playing metadata, album art, a smooth progress bar and
   play/pause, previous/next, volume and mute through the PC's media session.
 - **Ses** — every render endpoint the PC reports on one page: Bluetooth

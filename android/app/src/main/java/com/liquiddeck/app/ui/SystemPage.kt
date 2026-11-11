@@ -1175,12 +1175,12 @@ private fun gaugeColor(pct: Float?): Color = when {
     else -> Red
 }
 
-/** Web heat scale: cool stays neutral, warm from 70 °C, hot from 85 °C. */
+/** Temperature only: up to 60 °C green, above 60–80 °C orange, above 80 °C red. */
 private fun heatColor(temp: Float?): Color = when {
     temp == null -> TextMuted
-    temp >= 85f -> Red
-    temp >= 70f -> Yellow
-    else -> TextPrimary
+    temp > 80f -> Red
+    temp > 60f -> Orange
+    else -> Green
 }
 
 private fun gpuBrand(name: String?): String? {
