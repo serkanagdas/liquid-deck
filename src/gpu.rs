@@ -69,7 +69,7 @@ impl Gpu {
 
 #[cfg(windows)]
 mod platform {
-    use super::{Backend, Gpu};
+    use super::{windows, Backend, Gpu};
 
     pub fn load() -> Gpu {
         match windows::Driver::load() {
