@@ -25,11 +25,13 @@ import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Monitor
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,7 +62,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun MainShell(ui: UiState, vm: DeckViewModel) {
-    // The four pages live in a pager, so a horizontal swipe moves between them
+    // The five pages live in a pager, so a horizontal swipe moves between them
     // with the same gesture as the dock, and the dock follows the swipe.
     val pagerState = rememberPagerState(initialPage = 0) { PAGE_COUNT }
     val page = pagerState.currentPage
@@ -73,6 +75,14 @@ fun MainShell(ui: UiState, vm: DeckViewModel) {
     }
     val quotaVm: QuotaViewModel = viewModel()
     val quota by quotaVm.state.collectAsStateWithLifecycle()
+    val audio by vm.audio.collectAsStateWithLifecycle()
+
+    // The audio page is the only consumer of the endpoint list, so it polls
+    // only while it is the visible page.
+    LaunchedEffect(page) { vm.setAudioPageVisible(page == AUDIO_PAGE) }
+    DisposableEffect(Unit) {
+        onDispose { vm.setAudioPageVisible(false) }
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -102,7 +112,14 @@ fun MainShell(ui: UiState, vm: DeckViewModel) {
 
                     1 -> MediaPage(ui = ui, vm = vm)
 
-                    2 -> DeckPage(ui = ui, vm = vm)
+                    2 -> AudioPage(
+                        state = audio,
+                        hapticsEnabled = ui.haptics,
+                        onRefresh = vm::refreshAudio,
+                        onSelect = vm::selectAudio,
+                    )
+
+                    3 -> DeckPage(ui = ui, vm = vm)
 
                     else -> QuotaPage(
                         state = quota,
@@ -118,7 +135,8 @@ fun MainShell(ui: UiState, vm: DeckViewModel) {
     }
 }
 
-private const val PAGE_COUNT = 4
+private const val PAGE_COUNT = 5
+private const val AUDIO_PAGE = 2
 
 @Composable
 private fun StatusBar(ui: UiState, compact: Boolean, onSettings: () -> Unit) {
@@ -193,8 +211,9 @@ private fun Dock(selected: Int, compact: Boolean, onSelect: (Int) -> Unit) {
     val items: List<Triple<String, ImageVector, Int>> = listOf(
         Triple("Sistem", Icons.Rounded.Monitor, 0),
         Triple("Medya", Icons.Rounded.MusicNote, 1),
-        Triple("Deck", Icons.Rounded.GridView, 2),
-        Triple("Kota", Icons.Rounded.DataUsage, 3),
+        Triple("Ses", Icons.Rounded.VolumeUp, 2),
+        Triple("Deck", Icons.Rounded.GridView, 3),
+        Triple("Kota", Icons.Rounded.DataUsage, 4),
     )
 
     Box(

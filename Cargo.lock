@@ -360,6 +360,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "windows",
+ "windows-core",
  "windows-future",
  "windows-sys",
 ]

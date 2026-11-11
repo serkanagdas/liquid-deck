@@ -277,9 +277,40 @@ class DeckRepository {
         }
     }
 
+    /** Audio outputs as the PC sees them; null when the request fails. */
+    suspend fun fetchAudio(): AudioSnapshot? = runCatching {
+        request("/api/audio").use { response ->
+            if (!response.isSuccessful) return@use null
+            val text = response.body?.string() ?: return@use null
+            runCatching {
+                json.decodeFromJsonElement(
+                    AudioSnapshot.serializer(),
+                    json.parseToJsonElement(text),
+                )
+            }.getOrNull()
+        }
+    }.getOrNull()
+
+    /** Makes [id] the default output on the PC. */
+    suspend fun selectAudioOutput(id: String): ActionResult = runCatching {
+        val payload = buildJsonObject {
+            put("op", "output")
+            put("id", id)
+        }
+        request("/api/audio", "POST", payload.toString().toRequestBody(JSON)).use { response ->
+            val text = response.body?.string().orEmpty()
+            if (response.code == 401) return ActionResult(false, "Token reddedildi")
+            val obj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
+            ActionResult(
+                ok = obj?.get("ok")?.jsonPrimitive?.booleanOrNull ?: false,
+                message = obj?.get("message")?.jsonPrimitive?.contentOrNull
+                    ?: "Sunucu yanıt vermedi",
+            )
+        }
+    }.getOrElse { ActionResult(false, it.message ?: "Sunucuya ulaşılamadı") }
+
     /** Send an action over the socket, or fall back to HTTP when offline. */
-    suspend fun action(payload: JsonObject): ActionResult {
-        val ws = socket
+    suspend fun action(payload: JsonObject): ActionResult {        val ws = socket
         if (ws == null) return postAction(payload)
 
         val requestId = UUID.randomUUID().toString()

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.liquiddeck.app.data.ActionResult
+import com.liquiddeck.app.data.AudioSnapshot
 import com.liquiddeck.app.data.Board
 import com.liquiddeck.app.data.Connection
 import com.liquiddeck.app.data.DeckButton
@@ -14,12 +15,15 @@ import com.liquiddeck.app.data.MediaSnapshot
 import com.liquiddeck.app.data.Metrics
 import com.liquiddeck.app.data.ServerEvent
 import com.liquiddeck.app.data.SettingsStore
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -66,6 +70,14 @@ data class KeyEditor(
     val isNew: Boolean get() = buttonId == null
 }
 
+/** Live state of the audio-output page. */
+data class AudioUi(
+    val snapshot: AudioSnapshot? = null,
+    val loading: Boolean = false,
+    val switching: String? = null,
+    val error: String? = null,
+)
+
 class DeckViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = DeckRepository()
     private val store = SettingsStore(application)
@@ -78,6 +90,10 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val messages = _messages.asSharedFlow()
+
+    private val _audio = MutableStateFlow(AudioUi())
+    val audio = _audio.asStateFlow()
+    private var audioJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -139,6 +155,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
                     serverVersion = probe.version.orEmpty(),
                 )
             }
+            _audio.value = AudioUi()
             repo.start(trimmed, token)
         }
     }
@@ -163,6 +180,7 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
                 connection = Connection.Offline(),
             )
         }
+        _audio.value = AudioUi()
     }
 
     fun applySettings(host: String, token: String, keepAwake: Boolean, haptics: Boolean) {
@@ -525,6 +543,54 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
         else -> false
     }
 
+    /** The audio page polls only while it is on screen. */
+    fun setAudioPageVisible(visible: Boolean) {
+        if (!visible) {
+            audioJob?.cancel()
+            audioJob = null
+            return
+        }
+        if (audioJob?.isActive == true) return
+        audioJob = viewModelScope.launch {
+            while (isActive) {
+                loadAudio()
+                delay(AUDIO_REFRESH_MS)
+            }
+        }
+    }
+
+    fun refreshAudio() {
+        viewModelScope.launch { loadAudio() }
+    }
+
+    fun selectAudio(id: String) {        if (id.isBlank() || _audio.value.switching != null) return
+        viewModelScope.launch {
+            _audio.update { it.copy(switching = id, error = null) }
+            val result = repo.selectAudioOutput(id)
+            if (!result.ok) {
+                _audio.update { it.copy(switching = null, error = result.message) }
+                toast(result.message.ifBlank { "Çıkış değiştirilemedi." })
+                return@launch
+            }
+            _audio.update { it.copy(switching = null) }
+            toast(result.message.ifBlank { "Çıkış değiştirildi" })
+            loadAudio()
+        }
+    }
+
+    private suspend fun loadAudio() {
+        if (_audio.value.loading) return
+        _audio.update { it.copy(loading = true) }
+        val snapshot = repo.fetchAudio()
+        _audio.update { current ->
+            current.copy(
+                loading = false,
+                snapshot = snapshot ?: current.snapshot,
+                error = if (snapshot == null) "PC'den ses bilgisi alınamadı." else null,
+            )
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Media shortcuts
     // -----------------------------------------------------------------------
@@ -577,6 +643,10 @@ class DeckViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun toast(message: String) {
         _messages.tryEmit(message)
+    }
+
+    private companion object {
+        const val AUDIO_REFRESH_MS = 4_000L
     }
 
     override fun onCleared() {

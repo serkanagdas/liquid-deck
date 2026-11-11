@@ -21,13 +21,21 @@ browser, not the server.
   **0–30 % green · 30–40 % white · 40–70 % orange · 70–100 % red**.
 - **Medya** — now-playing metadata, album art, a smooth progress bar and
   play/pause, previous/next, volume and mute through the PC's media session.
+- **Ses** — every render endpoint the PC reports on one page: Bluetooth
+  headphones, USB headset, analog output, HDMI monitor. The current default is
+  the green card at the top of the list; tap another card and the PC switches to
+  it immediately, moving the streams that are already playing too. Each card
+  shows its kind (`BLUETOOTH`, `HDMI`, `ANALOG`, `KULAKLIK`, `USB`) and the
+  device volume when the backend can report it. The list polls every 4 seconds
+  while the page is visible, so a headset connected mid-session appears on its
+  own.
 - **Deck** — every board and button from `boards.json`, including nested
   boards, per-board columns, button spans, colors, icons, subtitles and
   persistent toggle state. Tap the pencil in the tab row to edit keys on the
   phone: change the label, subtitle, color, icon, action and width, save a new
   key, or delete one. The whole config goes back to the server with
   `PUT /api/config`, so the web editor and the phone always agree.
-- **Kota** — the fourth page tracks how much is left of your AI subscriptions.
+- **Kota** — the last page tracks how much is left of your AI subscriptions.
   Providers are configured on the phone and queried straight from it, so the PC
   can stay off; the list refreshes every **3 minutes** (Claude at most every
   5 minutes, because its endpoint throttles). A card is mostly dial: the
@@ -40,7 +48,7 @@ browser, not the server.
 - **Bağlantı** — WebSocket with exponential-backoff reconnect, HTTP polling
   fallback, token auth, manual host entry, saved settings.
 - **Panel** — keep-screen-on, haptic feedback, AMOLED black, CarPlay-style
-  status strip and dock. The four pages sit in a horizontal pager: swipe left
+  status strip and dock. The five pages sit in a horizontal pager: swipe left
   or right anywhere on the page area to move to the next/previous page, and the
   dock highlight follows the swipe; tapping a dock item animates to that page.
 - **Yatay öncelikli** — the activity runs in `sensorLandscape`, so a tablet in a
@@ -49,9 +57,9 @@ browser, not the server.
   now-playing strip and GPU clocks only appear when there is height for them.
   A portrait stack remains as a fallback for unusual devices.
 
-Not in this version: board renaming/columns, the audio mixer, soundboard, OBS
-test UI and history charts. Those remain in the web UI; the app says so in
-Settings.
+Not in this version: board renaming/columns, the per-app audio mixer, soundboard,
+OBS test UI and history charts. Those remain in the web UI; the app says so in
+Settings. Output switching is on the **Ses** page.
 
 ## Requirements
 
@@ -64,7 +72,10 @@ Verified on an Android 15 (API 35) emulator and on a Galaxy Note 4
 CPU/GPU hero row with its gauges and detail sheets, media transport, board
 switching, toggles, the in-app key editor, settings sheet, the Kota grid and
 its provider editor (manual card, live Z.ai request, 401 error card), offline
-banner and automatic reconnect.
+banner and automatic reconnect. The Ses page was checked on the same Note 4:
+all four outputs listed with their kinds and volumes, tapping Arctis Nova 7
+switched the PC default, the toast reported `Output switched (11 streams moved)`,
+and the green card moved to the new device within one poll.
 
 ## Build
 
@@ -147,6 +158,23 @@ for your board: `sudo modprobe nct6775` (Nuvoton) or `sudo modprobe it87`
 (ITE), added to `/etc/modules-load.d/` to survive reboots. Without one the fan
 card stays hidden and the CPU card shows only the CPU temperature.
 
+## Ses — output routing
+
+`GET /api/audio` returns the render endpoints plus the apps that are currently
+playing; the app uses the first half. `POST /api/audio` with
+`{"op":"output","id":"…"}` switches the default. The same operation backs the
+audio keys in the web deck, so both stay in sync.
+
+| Platform | Backend | What a switch does |
+| --- | --- | --- |
+| **Linux** | `pactl` (PipeWire or PulseAudio) | `set-default-sink`, then `move-sink-input` for every open stream, so audio is audible immediately; the reply reports how many streams moved |
+| **Windows** | Core Audio COM | enumerates `IMMDevice` render endpoints, reads `PKEY_Device_FriendlyName`, and calls `IPolicyConfig::SetDefaultEndpoint` for the console, multimedia and communications roles |
+| **macOS** | `SwitchAudioSource` | changes the default output when the tool is installed |
+
+Volume on the cards comes from the sink itself, which only the `pactl` backend
+reports; on Windows the cards show the kind alone and `POST /api/audio` with
+`op=volume` answers that the operation is unavailable.
+
 ## Kota — subscription quota
 
 Keys never leave the phone: they are stored in a separate DataStore
@@ -187,6 +215,7 @@ android/app/src/main/java/com/liquiddeck/app/
 ├── MainActivity.kt          edge-to-edge shell, keep-screen-on, snackbar
 ├── data/
 │   ├── Models.kt            wire models (metrics, boards, state, events)
+│   ├── AudioModels.kt       audio devices, kind heuristic, snapshot
 │   ├── DeckRepository.kt    OkHttp WebSocket, polling fallback, action RPC
 │   ├── SettingsStore.kt     DataStore: host, token, keep-awake, haptics
 │   ├── QuotaModels.kt       provider kinds, quota windows, snapshots
@@ -198,6 +227,7 @@ android/app/src/main/java/com/liquiddeck/app/
     ├── MainShell.kt         status strip, pages, dock
     ├── SystemPage.kt        live hardware cards, gauges, detail sheet
     ├── MediaPage.kt         artwork, progress, transport controls
+    ├── AudioPage.kt         output cards, switch on tap, 4 s poll while visible
     ├── DeckPage.kt          board tabs and the touch grid
     ├── QuotaPage.kt         quota grid, provider cards, editor sheet
     ├── QuotaViewModel.kt    three-minute refresh loop, provider CRUD

@@ -8,7 +8,7 @@ Liquid Deck runs on the machine you want to monitor, serves an embedded dashboar
 
 - Live CPU, RAM, temperature, network throughput, TCP ping, load average and uptime.
 - A now-playing panel that mirrors the PC's media session — cover art, title, artist, progress and play/pause/skip — through GSMTC on Windows, `playerctl` on Linux and AppleScript on macOS.
-- A configurable, multi-board touch deck with a full in-browser editor, nested boards, persistent toggle states, URL launchers, OBS WebSocket v5, a soundboard and a system audio mixer.
+- A configurable, multi-board touch deck with a full in-browser editor, nested boards, persistent toggle states, URL launchers, OBS WebSocket v5, a soundboard and a system audio mixer with output switching on both Linux and Windows.
 - Discord mute/deafen, media keys, volume, terminal, game mode and custom scripts.
 - AMOLED-black, CarPlay-style shell: one compact status strip, a three-tab dock and squircle panels, friendly from a 900 × 430 car display up to 1440 × 2560.
 - WebSocket telemetry with automatic reconnect and an HTTP polling fallback.
@@ -94,7 +94,7 @@ adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
   - Çoklu pano (Multi-board) geçişi ve iç içe pano navigasyonu.
   - OBS Studio WebSocket v5 entegrasyonu (kayıt başlat/durdur, sahne değiştir, ses sustur).
   - Soundboard (özel ses efektlerini tuşa basarak çalma).
-  - Sistem Ses Mikseri (PulseAudio/PipeWire çıkış cihazı seçimi ve uygulama bazlı ses ayarları).
+  - Sistem Ses Mikseri (PulseAudio/PipeWire çıkış cihazı seçimi ve uygulama bazlı ses ayarları; Windows'ta Core Audio ile çıkış cihazı değiştirme).
   - Canlı Donanım Telemetrisi: CPU, RAM, Anlık Ağ Grafiği, TCP Ping Gecikmesi, Sıcaklık.
 - **Ultra Düşük Güç & Termal Optimizasyon:**
   - Note 4'ün 1440x2560 2K AMOLED ekranında GPU'yu kitleyen tüm CSS gradyanları ve sürekli çalışan 60 FPS geçişler (`transition`) kaldırıldı.
@@ -146,7 +146,7 @@ adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
 | `src/startup.rs` | Per-user Windows logon startup, single tray instance, ADB path discovery and CPU helper task launch. |
 | `src/actions.rs` | Action enum, validation, platform backends, script confinement, process timeouts, unit tests. |
 | `src/deck.rs` | `boards.json` model, defaults, normalisation/validation, atomic persistence, `state.json` toggle store. |
-| `src/audio.rs` | Audio output/app mixer via `pactl` on Linux, `SwitchAudioSource` + AppleScript on macOS. |
+| `src/audio.rs` | Audio output/app mixer via `pactl` on Linux, Core Audio COM on Windows (endpoint switching), `SwitchAudioSource` + AppleScript on macOS. |
 | `src/obs.rs` | Minimal obs-websocket v5 client: hello, SHA-256 challenge auth, request/response, allow-listed operations. |
 | `src/sounds.rs` | Sound library discovery, path confinement, built-in clips and platform playback. |
 | `src/media.rs` | Now-playing snapshot and cover art from GSMTC (Windows), `playerctl` (Linux) or AppleScript (macOS), with idle-aware polling. |
@@ -185,7 +185,7 @@ adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
 `android/` contains a Kotlin + Jetpack Compose thin client for the same agent. It is not a second server: the PC still owns telemetry, media and actions, while the APK replaces the browser and adds native keep-screen-on, haptics and DataStore-persisted settings.
 
 - Android **6.0+ (API 23)**, including the Galaxy Note 4.
-- Three pages — Sistem, Medya and Deck — with board tabs, column spans, toggle state and album art.
+- Five pages — Sistem, Medya, Ses, Deck and Kota — with board tabs, column spans, toggle state, album art, PC audio-output switching and subscription quota cards.
 - WebSocket with exponential-backoff reconnect, plus the `/api/metrics` polling fallback.
 - Build: `cd android && ./gradlew :app:assembleDebug`; the APK lands in `android/app/build/outputs/apk/debug/`.
 - Full notes, protocol details and limitations: [`android/README.md`](android/README.md).
@@ -231,6 +231,7 @@ Wayland compositors may block synthetic input. `wtype` works on wlroots-based co
 
 - **Visual Studio Build Tools** with the “Desktop development with C++” workload (MSVC linker).
 - PowerShell 5.1+ (built in) for key, media and volume actions.
+- Audio output switching needs nothing extra: it uses Core Audio through COM. Per-device volume, mute and the per-app mixer are not available on Windows.
 - The core server has no extra runtime dependencies. Optional Note 4 integration needs ADB; the optional native Zen 4 CPU temperature helper needs an already-installed PawnIO driver and one-time administrator-approved setup.
 
 ### macOS
@@ -658,7 +659,7 @@ Allowed operations:
 | `app_volume` | numeric sink-input index | 0–100 |
 | `app_mute` | numeric sink-input index | ignored |
 
-Linux uses `pactl`. macOS uses `SwitchAudioSource` for output switching and AppleScript for volume/mute. Windows reports that the mixer is unsupported. The mixer sheet beside the board tabs lists device and application ids that can be pasted into a button.
+Linux uses `pactl` and moves the playing streams onto the new sink, so the switch is audible immediately. Windows enumerates render endpoints through Core Audio and changes the default with `IPolicyConfig`, so output switching works there too; per-device volume, mute and the per-app mixer remain Linux/macOS-only and answer with an explanatory error. macOS uses `SwitchAudioSource` for output switching and AppleScript for volume/mute. The mixer sheet beside the board tabs lists device and application ids that can be pasted into a button.
 
 ### `board` / `panel`
 
@@ -846,7 +847,7 @@ curl -sS http://127.0.0.1:8787/api/sounds
 curl -sS 'http://127.0.0.1:8787/api/sound?name=click.wav' --output click.wav
 ```
 
-`GET /api/audio` returns `{supported, backend, devices, apps, message}`. `devices` contains `{id, description, volume, muted, is_default}`; `apps` contains `{id, app, title, volume, muted}`. When `pactl` is unavailable on Linux, `supported` is `false` and `message` explains what to install.
+`GET /api/audio` returns `{supported, backend, devices, apps, supports_volume, message}`. `devices` contains `{id, description, volume, muted, is_default}`; `apps` contains `{id, app, title, volume, muted}`. `supports_volume` is `true` only on the `pactl` backend, because Windows lists endpoints without reading their levels. When the backend is unavailable, `supported` is `false` and `message` explains what to install.
 
 `POST /api/audio` accepts `op` = `output`, `volume`, `mute`, `app_volume` or `app_mute`, plus `id` and an optional `value` (0–100).
 
@@ -1334,7 +1335,7 @@ Grant Accessibility permission to the terminal or binary. `osascript` returns a 
 - Linux requires `pactl` (`pulseaudio-utils`, also shipped by PipeWire’s PulseAudio shim). Verify with `pactl info`.
 - If `pactl` exists but lists no devices, the server user cannot reach the session bus. Export `XDG_RUNTIME_DIR=/run/user/$(id -u)` in the service unit.
 - macOS needs `SwitchAudioSource` (`brew install switchaudio-osx`) for output switching. Without it, the mixer can still change volume through AppleScript but cannot switch outputs.
-- Windows reports the mixer as unsupported; use the volume buttons and media keys instead.
+- Windows supports output switching through Core Audio, so the output list and the **Seç** button work; volume, mute and per-app rows answer `Volume control is not available on Windows yet.` and the cards show no level bar.
 - Application rows only appear while something is actually playing audio (`pactl list sink-inputs` is empty otherwise).
 - Slider changes are sent on release, not while dragging. If nothing changes, check the toast for the `pactl` error text.
 

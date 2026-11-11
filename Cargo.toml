@@ -34,8 +34,19 @@ base64 = "0.22"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_Com", "Win32_System_Console", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 # Windows media session (GSMTC) for the now-playing panel: metadata, timeline,
 # album art and playback status of whatever app is currently playing.
-windows = { version = "0.62", features = ["Foundation", "Media_Control", "Storage_Streams"] }
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Media_Control",
+    "Storage_Streams",
+    "Win32_Media_Audio",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+    "Win32_UI_Shell_PropertiesSystem",
+] }
 windows-future = "0.3"
+# The interface macro in windows-core expands to `::windows_core::…` paths, so
+# the crate has to be a direct dependency to define a custom COM interface.
+windows-core = "0.62"
 
 [profile.release]
 opt-level = "z"     # optimise for size

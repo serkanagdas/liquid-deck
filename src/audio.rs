@@ -36,6 +36,9 @@ pub struct AudioSnapshot {
     pub backend: String,
     pub devices: Vec<AudioDevice>,
     pub apps: Vec<AudioApp>,
+    /// Whether `devices[].volume` carries a real per-device reading. Windows
+    /// reports endpoints without opening an audio session, so it is false there.
+    pub supports_volume: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
@@ -86,6 +89,7 @@ async fn platform_snapshot() -> AudioSnapshot {
         backend: "pactl".to_string(),
         devices: parse_sinks(&sinks, &default),
         apps: parse_sink_inputs(&inputs),
+        supports_volume: true,
         message: None,
     }
 }
@@ -102,7 +106,14 @@ async fn platform_apply(op: &str, id: &str, value: u8) -> Result<String, String>
                 return Err("Unknown output device. Refresh the mixer.".to_string());
             }
             run("pactl", &["set-default-sink", id], 2_500).await?;
-            Ok("Output switched".to_string())
+            // `set-default-sink` only routes new streams; move the ones that are
+            // already playing so the switch is audible straight away.
+            let moved = move_streams(id).await;
+            Ok(match moved {
+                0 => "Output switched".to_string(),
+                1 => "Output switched (1 stream moved)".to_string(),
+                count => format!("Output switched ({count} streams moved)"),
+            })
         }
         "volume" => {
             let target = sink_or_default(id).await?;
@@ -156,6 +167,34 @@ fn validate_index(id: &str) -> Result<String, String> {
         return Err("Invalid application mixer id.".to_string());
     }
     Ok(id.to_string())
+}
+
+/// Moves every playing stream onto `sink` and reports how many were moved.
+///
+/// PulseAudio keeps existing sink-inputs on the old device when the default
+/// sink changes, which makes a switch silent until each app restarts. Best
+/// effort: a stream that disappears between listing and moving is skipped.
+#[cfg(target_os = "linux")]
+async fn move_streams(sink: &str) -> usize {
+    let Ok(list) = run("pactl", &["list", "short", "sink-inputs"], 2_500).await else {
+        return 0;
+    };
+    let mut moved = 0;
+    for line in list.lines() {
+        let Some(index) = line.split_whitespace().next() else {
+            continue;
+        };
+        if index.is_empty() || !index.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        if run("pactl", &["move-sink-input", index, sink], 2_000)
+            .await
+            .is_ok()
+        {
+            moved += 1;
+        }
+    }
+    moved
 }
 
 #[cfg(target_os = "linux")]
@@ -340,6 +379,7 @@ async fn platform_snapshot() -> AudioSnapshot {
                 backend: "SwitchAudioSource".to_string(),
                 devices,
                 apps: Vec::new(),
+                supports_volume: false,
                 message: None,
             }
         }
@@ -385,21 +425,231 @@ async fn platform_apply(op: &str, id: &str, value: u8) -> Result<String, String>
 
 #[cfg(target_os = "windows")]
 async fn platform_snapshot() -> AudioSnapshot {
-    AudioSnapshot {
-        supported: false,
-        backend: "windows".to_string(),
-        message: Some(
-            "Endpoint switching needs the AudioDeviceCmdlets PowerShell module. \
-             Use volume buttons or assign a script action instead."
-                .to_string(),
-        ),
-        ..AudioSnapshot::default()
-    }
+    win::snapshot()
 }
 
 #[cfg(target_os = "windows")]
-async fn platform_apply(_op: &str, _id: &str, _value: u8) -> Result<String, String> {
-    Err("Audio endpoint switching is not available on Windows yet.".to_string())
+async fn platform_apply(op: &str, id: &str, value: u8) -> Result<String, String> {
+    match op {
+        "output" => {
+            if id.is_empty() {
+                return Err("Select an output device first.".to_string());
+            }
+            let snapshot = win::snapshot();
+            if !snapshot.devices.iter().any(|device| device.id == id) {
+                return Err("Unknown output device. Refresh the mixer.".to_string());
+            }
+            win::set_default(id)?;
+            Ok("Output switched".to_string())
+        }
+        "volume" | "mute" => {
+            let _ = value;
+            Err("Volume control is not available on Windows yet.".to_string())
+        }
+        other => Err(format!("Unknown audio operation: {other}")),
+    }
+}
+
+/// Core Audio through COM: `IMMDeviceEnumerator` lists the active render
+/// endpoints, and the undocumented `IPolicyConfig` interface changes the
+/// default one — the two APIs Windows itself uses in the sound settings.
+#[cfg(target_os = "windows")]
+mod win {
+    #![allow(non_snake_case)]
+
+    use std::ffi::c_void;
+
+    use windows::core::{interface, GUID, IUnknown, IUnknown_Vtbl, PCWSTR};
+    use windows::Win32::Foundation::PROPERTYKEY;
+    use windows::Win32::Media::Audio::{
+        eCommunications, eConsole, eMultimedia, eRender, IMMDevice, IMMDeviceEnumerator,
+        MMDeviceEnumerator, DEVICE_STATE_ACTIVE, ERole,
+    };
+    use windows::Win32::System::Com::StructuredStorage::{PropVariantClear, PROPVARIANT};
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_MULTITHREADED, STGM_READ,
+    };
+
+    use super::{AudioDevice, AudioSnapshot};
+
+    /// `IPolicyConfig` is not in the Windows SDK headers, but the interface has
+    /// been stable since Windows 7. Only `SetDefaultEndpoint` is called; the
+    /// methods before it exist so the vtable offsets line up.
+    #[interface("f8679f50-850a-41cf-9c72-430f290290c8")]
+    unsafe trait IPolicyConfig: IUnknown {
+        fn GetMixFormat(
+            &self,
+            device_id: PCWSTR,
+            format: *mut *mut c_void,
+        ) -> windows::core::Result<()>;
+        fn GetDeviceFormat(
+            &self,
+            device_id: PCWSTR,
+            is_default: i32,
+            format: *mut *mut c_void,
+        ) -> windows::core::Result<()>;
+        fn ResetDeviceFormat(&self, device_id: PCWSTR) -> windows::core::Result<()>;
+        fn SetDeviceFormat(
+            &self,
+            device_id: PCWSTR,
+            endpoint_format: *mut c_void,
+            mix_format: *mut c_void,
+        ) -> windows::core::Result<()>;
+        fn GetProcessingPeriod(
+            &self,
+            device_id: PCWSTR,
+            is_default: i32,
+            default_period: *mut i64,
+            minimum_period: *mut i64,
+        ) -> windows::core::Result<()>;
+        fn SetProcessingPeriod(
+            &self,
+            device_id: PCWSTR,
+            period: *mut i64,
+        ) -> windows::core::Result<()>;
+        fn GetShareMode(&self, device_id: PCWSTR, mode: *mut c_void) -> windows::core::Result<()>;
+        fn SetShareMode(&self, device_id: PCWSTR, mode: *mut c_void) -> windows::core::Result<()>;
+        fn GetPropertyValue(
+            &self,
+            device_id: PCWSTR,
+            key: *const PROPERTYKEY,
+            value: *mut c_void,
+        ) -> windows::core::Result<()>;
+        fn SetPropertyValue(
+            &self,
+            device_id: PCWSTR,
+            key: *const PROPERTYKEY,
+            value: *mut c_void,
+        ) -> windows::core::Result<()>;
+        fn SetDefaultEndpoint(&self, device_id: PCWSTR, role: ERole) -> windows::core::Result<()>;
+        fn SetEndpointVisibility(
+            &self,
+            device_id: PCWSTR,
+            visible: i32,
+        ) -> windows::core::Result<()>;
+    }
+
+    const CLSID_POLICY_CONFIG: GUID = GUID::from_u128(0x870af99c_171d_4f9e_af0d_e63df40c2bc9);
+    /// `PKEY_Device_FriendlyName`: {a45c254e-df1c-4efd-8020-67d146a850e0}, 14.
+    const PKEY_FRIENDLY_NAME: PROPERTYKEY = PROPERTYKEY {
+        fmtid: GUID::from_u128(0xa45c254e_df1c_4efd_8020_67d146a850e0),
+        pid: 14,
+    };
+
+    /// The server runs on a Tokio thread that has not touched COM yet. An
+    /// already-initialised apartment (the tray or media session may have one)
+    /// returns `RPC_E_CHANGED_MODE`, which is harmless here.
+    fn ready() {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        }
+    }
+
+    fn enumerator() -> windows::core::Result<IMMDeviceEnumerator> {
+        ready();
+        unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }
+    }
+
+    fn endpoint_id(device: &IMMDevice) -> String {
+        unsafe {
+            match device.GetId() {
+                Ok(id) => {
+                    let text = id.to_string().unwrap_or_default();
+                    CoTaskMemFree(Some(id.0 as *const c_void));
+                    text
+                }
+                Err(_) => String::new(),
+            }
+        }
+    }
+
+    fn friendly_name(device: &IMMDevice) -> String {
+        unsafe {
+            let Ok(store) = device.OpenPropertyStore(STGM_READ) else {
+                return String::new();
+            };
+            let Ok(value) = store.GetValue(&PKEY_FRIENDLY_NAME) else {
+                return String::new();
+            };
+            let mut value: PROPVARIANT = value;
+            let text = value
+                .Anonymous
+                .Anonymous
+                .Anonymous
+                .pwszVal
+                .to_string()
+                .unwrap_or_default();
+            let _ = PropVariantClear(&mut value);
+            text
+        }
+    }
+
+    pub fn snapshot() -> AudioSnapshot {
+        let Ok(enumerator) = enumerator() else {
+            return AudioSnapshot {
+                supported: false,
+                backend: "WASAPI".to_string(),
+                message: Some(
+                    "Core Audio açılamadı. Windows ses servisi çalışıyor mu?".to_string(),
+                ),
+                ..AudioSnapshot::default()
+            };
+        };
+
+        let default_id = unsafe { enumerator.GetDefaultAudioEndpoint(eRender, eConsole) }
+            .ok()
+            .map(|device| endpoint_id(&device));
+
+        let mut devices = Vec::new();
+        if let Ok(collection) =
+            unsafe { enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE) }
+        {
+            let count = unsafe { collection.GetCount() }.unwrap_or(0);
+            for index in 0..count {
+                let Ok(device) = (unsafe { collection.Item(index) }) else {
+                    continue;
+                };
+                let id = endpoint_id(&device);
+                if id.is_empty() {
+                    continue;
+                }
+                let name = friendly_name(&device);
+                devices.push(AudioDevice {
+                    is_default: default_id.as_deref() == Some(id.as_str()),
+                    id,
+                    description: if name.is_empty() {
+                        "Ses çıkışı".to_string()
+                    } else {
+                        name
+                    },
+                    volume: 0,
+                    muted: false,
+                });
+            }
+        }
+
+        AudioSnapshot {
+            supported: true,
+            backend: "WASAPI".to_string(),
+            devices,
+            apps: Vec::new(),
+            supports_volume: false,
+            message: None,
+        }
+    }
+
+    pub fn set_default(id: &str) -> Result<(), String> {
+        let wide: Vec<u16> = id.encode_utf16().chain(std::iter::once(0)).collect();
+        ready();
+        let policy: IPolicyConfig =
+            unsafe { CoCreateInstance(&CLSID_POLICY_CONFIG, None, CLSCTX_ALL) }
+                .map_err(|error| format!("Ses ilkesi açılamadı: {error}"))?;
+        for role in [eConsole, eMultimedia, eCommunications] {
+            unsafe { policy.SetDefaultEndpoint(PCWSTR(wide.as_ptr()), role) }
+                .map_err(|error| format!("Varsayılan çıkış değiştirilemedi: {error}"))?;
+        }
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
