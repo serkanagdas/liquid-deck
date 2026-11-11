@@ -504,16 +504,22 @@ impl FansCache {
 
 #[cfg(target_os = "linux")]
 fn read_fans() -> FanSample {
+    read_fans_from(std::path::Path::new("/sys/class/hwmon"))
+}
+
+#[cfg(target_os = "linux")]
+fn read_fans_from(root: &std::path::Path) -> FanSample {
     const SKIP: [&str; 7] = [
         "gpu", "amdgpu", "nvidia", "nouveau", "radeon", "battery", "headset",
     ];
 
-    let mut chips: Vec<std::path::PathBuf> = match std::fs::read_dir("/sys/class/hwmon") {
+    let mut chips: Vec<std::path::PathBuf> = match std::fs::read_dir(root) {
         Ok(entries) => entries.flatten().map(|entry| entry.path()).collect(),
         Err(_) => return FanSample::default(),
     };
     chips.sort();
 
+    let mut fallback = FanSample::default();
     for chip in chips {
         let name = std::fs::read_to_string(chip.join("name"))
             .unwrap_or_default()
@@ -524,31 +530,101 @@ fn read_fans() -> FanSample {
             continue;
         }
 
-        let mut fans = Vec::new();
-        for header in 1..=8 {
+        let mut headers = Vec::new();
+        for header in 1..=16 {
             let path = chip.join(format!("fan{header}_input"));
-            match std::fs::read_to_string(&path) {
-                Ok(raw) => fans.push(raw.trim().parse::<u32>().ok()),
-                Err(_) => break,
+            if let Some(rpm) = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|raw| raw.trim().parse::<u32>().ok())
+            {
+                let label = std::fs::read_to_string(chip.join(format!("fan{header}_label")))
+                    .unwrap_or_default()
+                    .trim()
+                    .to_ascii_lowercase();
+                headers.push((header, rpm, label));
             }
         }
-        if fans.is_empty() {
+        if headers.is_empty() {
             continue;
         }
 
-        let pct = std::fs::read_to_string(chip.join("pwm1"))
-            .ok()
+        // CPU_FAN is not always fan1; channels may also be sparse. Use labels
+        // when present, retaining the conventional first-channel fallback only
+        // on drivers that expose no labels at all.
+        let cpu = headers.iter().position(|(_, _, label)| {
+            (label.contains("cpu") || label.contains("processor"))
+                && !label.contains("opt")
+                && !label.contains("pump")
+        });
+        let explicitly_cpu = cpu.is_some();
+        let cpu = cpu.or_else(|| {
+            headers
+                .iter()
+                .all(|(_, _, label)| label.is_empty())
+                .then_some(0)
+        });
+        let pct = cpu
+            .and_then(|index| {
+                std::fs::read_to_string(chip.join(format!("pwm{}", headers[index].0))).ok()
+            })
             .and_then(|raw| raw.trim().parse::<u32>().ok())
-            .map(|pwm| ((pwm.min(255) as f32 / 255.0) * 100.0).round() as u32);
+            .filter(|pwm| *pwm <= 255)
+            .map(|pwm| (pwm * 100 + 127) / 255);
+        if let Some(index) = cpu {
+            let cpu_fan = headers.remove(index);
+            headers.insert(0, cpu_fan);
+        }
+        let fans = headers.into_iter().map(|(_, rpm, _)| Some(rpm)).collect();
 
-        return FanSample {
+        let sample = FanSample {
             fans,
             pct,
             chip: Some(name),
         };
+        if explicitly_cpu {
+            return sample;
+        }
+        if fallback.fans.is_empty() {
+            fallback = sample;
+        }
     }
 
-    FanSample::default()
+    fallback
+}
+
+#[cfg(all(target_os = "linux", test))]
+mod linux_fan_tests {
+    use super::*;
+
+    #[test]
+    fn reads_sparse_cpu_channel_and_its_matching_pwm() {
+        let root =
+            std::env::temp_dir().join(format!("liquid-deck-hwmon-test-{}", std::process::id()));
+        let chip = root.join("hwmon0");
+        std::fs::create_dir_all(&chip).unwrap();
+        for (file, value) in [
+            ("name", "nct6798"),
+            ("fan1_input", "900"),
+            ("fan1_label", "SYS_FAN"),
+            ("pwm1", "255"),
+            ("fan3_input", "1200"),
+            ("fan3_label", "CPU_FAN"),
+            ("pwm3", "128"),
+        ] {
+            std::fs::write(chip.join(file), value).unwrap();
+        }
+        let sample = read_fans_from(&root);
+        assert_eq!(sample.fans, vec![Some(1200), Some(900)]);
+        assert_eq!(sample.pct, Some(50));
+        assert_eq!(sample.chip.as_deref(), Some("nct6798"));
+        std::fs::remove_file(chip.join("pwm3")).unwrap();
+        assert_eq!(read_fans_from(&root).pct, None);
+        std::fs::write(chip.join("pwm3"), "999").unwrap();
+        assert_eq!(read_fans_from(&root).pct, None);
+        std::fs::write(chip.join("pwm3"), "0").unwrap();
+        assert_eq!(read_fans_from(&root).pct, Some(0));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
 
 #[cfg(all(not(windows), not(target_os = "linux")))]

@@ -56,9 +56,8 @@ import com.liquiddeck.app.data.GpuMetrics
 import com.liquiddeck.app.data.MediaSnapshot
 import com.liquiddeck.app.data.Metrics
 import com.liquiddeck.app.ui.theme.Cyan
-import com.liquiddeck.app.ui.theme.Green
+import com.liquiddeck.app.ui.theme.Crimson
 import com.liquiddeck.app.ui.theme.Ink
-import com.liquiddeck.app.ui.theme.Lilac
 import com.liquiddeck.app.ui.theme.Lime
 import com.liquiddeck.app.ui.theme.Orange
 import com.liquiddeck.app.ui.theme.Purple
@@ -461,7 +460,7 @@ private fun CpuHardwareCard(
 
     HardwareCard(
         modifier = modifier,
-        accent = Orange,
+        accent = Crimson,
         title = "CPU",
         brand = null,
         priority = "01",
@@ -697,7 +696,7 @@ private fun RamStat(metrics: Metrics?) {
                 text = if (metrics == null) "—" else metrics.ramPct.roundToInt().toString(),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium,
-                color = Lilac,
+                color = gaugeColor(metrics?.ramPct),
                 maxLines = 1,
                 softWrap = false,
             )
@@ -853,7 +852,7 @@ private fun SystemDetailSheet(
 ) {
     DeckSheet(
         onDismiss = onDismiss,
-        accent = if (target == SystemDetail.Cpu) Orange else Lime,
+        accent = if (target == SystemDetail.Cpu) Crimson else Lime,
     ) {
         Column(
             modifier = Modifier
@@ -876,7 +875,7 @@ private fun CpuDetail(metrics: Metrics?, version: String) {
 
     DetailHeading(
         eyebrow = "İŞLEMCİ",
-        accent = Orange,
+        accent = Crimson,
         title = "CPU ayrıntıları",
         subtitle = when {
             metrics == null -> "Veri bekleniyor"
@@ -899,7 +898,7 @@ private fun CpuDetail(metrics: Metrics?, version: String) {
             label = "Kullanım",
             value = if (metrics == null) "—" else metrics.cpu.roundToInt().toString(),
             unit = "%",
-            color = Orange,
+            color = gaugeColor(metrics?.cpu),
             modifier = Modifier.weight(1f),
         )
         StatBox(
@@ -990,7 +989,7 @@ private fun GpuDetail(metrics: Metrics?) {
             label = "Kullanım",
             value = gpu?.usage?.toString() ?: "—",
             unit = "%",
-            color = Lime,
+            color = gaugeColor(gpu?.usage?.toFloat()),
             modifier = Modifier.weight(1f),
         )
         StatBox(
@@ -1148,7 +1147,7 @@ private fun ThreadGrid(threads: List<Int>) {
                             )
                         }
                         Spacer(Modifier.height(3.dp))
-                        ProgressLine(value / 100f, Orange, height = 3)
+                        ProgressLine(value / 100f, gaugeColor(value.toFloat()), height = 3)
                     }
                 }
                 repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
@@ -1166,21 +1165,20 @@ private sealed interface SystemDetail {
     data object Gpu : SystemDetail
 }
 
-/** Requested analog meter scale: green → white → orange → red. */
+/** Shared CPU/GPU usage, fan duty and RAM scale: white → orange → red. */
 private fun gaugeColor(pct: Float?): Color = when {
     pct == null -> TextMuted
-    pct < 30f -> Green
     pct < 40f -> TextPrimary
     pct < 70f -> Orange
     else -> Red
 }
 
-/** Temperature only: up to 60 °C green, above 60–80 °C orange, above 80 °C red. */
+/** Temperature only: up to 60 °C white, above 60–80 °C orange, above 80 °C red. */
 private fun heatColor(temp: Float?): Color = when {
     temp == null -> TextMuted
     temp > 80f -> Red
     temp > 60f -> Orange
-    else -> Green
+    else -> TextPrimary
 }
 
 private fun gpuBrand(name: String?): String? {

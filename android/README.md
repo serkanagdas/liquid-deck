@@ -18,9 +18,10 @@ browser, not the server.
   The rings are 270° arcs with a number and a small `%` in the middle; a missing
   sensor draws an empty track with `—` instead of inventing a reading. The same
   scale colours the arc, the number and the detail sheet values:
-  **0–30 % green · 30–40 % white · 40–70 % orange · 70–100 % red**.
+  **0–40 % white · 40–70 % orange · 70–100 % red**. RAM uses the same scale.
   CPU/GPU temperatures use their own scale on both cards and detail panels:
-  **≤ 60 °C green · > 60–80 °C orange · > 80 °C red**.
+  **≤ 60 °C white · > 60–80 °C orange · > 80 °C red**. CPU card/detail accents
+  are crimson red; status and quota success colours remain unchanged.
 - **Medya** — now-playing metadata, album art, a smooth progress bar and
   play/pause, previous/next, volume and mute through the PC's media session.
 - **Ses** — every render endpoint the PC reports on one page: Bluetooth
