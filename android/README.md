@@ -11,7 +11,7 @@ browser, not the server.
   (CPU and GPU) with the same anatomy — label, thread count / model, then the
   temperature as plain text on the left and two minimal speedometer rings on the
   right: **Kullanım** on top, **Fan** directly under it. A bottom line carries
-  the sensor source (CPU) or VRAM plus clocks and power (GPU). Below the row,
+  the sensor source (CPU) or VRAM plus clocks and power (GPU). Above the row,
   one slim strip with ↓ İndirme, ↑ Yükleme, TCP Ping and RAM. Tap either card to
   open its detail sheet, which holds the per-thread grid, motherboard fan
   headers, CPU power and the full GPU clock/power/p-state readout.
@@ -48,7 +48,8 @@ browser, not the server.
 - **Bağlantı** — WebSocket with exponential-backoff reconnect, HTTP polling
   fallback, token auth, manual host entry, saved settings.
 - **Panel** — keep-screen-on, haptic feedback, AMOLED black, CarPlay-style
-  status strip and dock. The five pages sit in a horizontal pager: swipe left
+  status strip and dock. The header shows the date beside the time, without a
+  connected badge; offline warnings remain visible. The five pages sit in a horizontal pager: swipe left
   or right anywhere on the page area to move to the next/previous page, and the
   dock highlight follows the swipe; tapping a dock item animates to that page.
 - **Yatay öncelikli** — the activity runs in `sensorLandscape`, so a tablet in a
@@ -233,6 +234,7 @@ android/app/src/main/java/com/liquiddeck/app/
     ├── QuotaViewModel.kt    three-minute refresh loop, provider CRUD
     ├── KeyEditorSheet.kt    on-phone key editor (label, color, icon, action)
     ├── SettingsSheet.kt     connection settings
+    ├── DeckSheet.kt         shared dark floating panel, fixed close header
     ├── Components.kt        glass cards, gauge ring, status pill
     ├── Format.kt            byte/rate/uptime formatting, colors, icons
     └── theme/Theme.kt       AMOLED palette and typography
@@ -268,9 +270,9 @@ If the socket is down, actions fall back to `POST /api/action` and telemetry to
   backends. The Linux `playerctl` backend reports title, artist, album, state
   and position, but no artwork and no seek support, so the Media page shows the
   artwork placeholder there.
-- Bottom sheets are capped at 640 dp and centred. Do not add
-  `navigationBarsPadding()` inside a sheet: in landscape the navigation bar sits
-  on the left, so that padding pushes the content off-centre. The sheets keep
-  their own 22 dp inset instead.
+- Settings, CPU/GPU details, key editing and provider editing share `DeckSheet`:
+  a centred dark panel capped at 700 dp, a fixed close header, subtle accent
+  gradient, rounded border and bounded scrollable content. Keyboard insets are
+  handled by the shared panel; no blur or continuous decorative motion is used.
 - The Kota API keys are stored in plain DataStore, like the server token. Keep
   the tablet locked, and revoke a key from the vendor's dashboard if it leaks.

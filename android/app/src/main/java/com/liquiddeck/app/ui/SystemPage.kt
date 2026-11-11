@@ -30,9 +30,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -152,6 +150,8 @@ private fun LandscapeSystem(
             OfflineBanner(ui.connection, hasData = metrics != null)
         }
 
+        NetworkStrip(metrics)
+
         if (showNowPlaying) {
             NowPlayingStrip(
                 media = ui.media,
@@ -193,7 +193,6 @@ private fun LandscapeSystem(
             }
         }
 
-        NetworkStrip(metrics)
     }
 }
 
@@ -215,6 +214,8 @@ private fun PortraitSystem(
         if (ui.connection is Connection.Offline) {
             item { OfflineBanner(ui.connection, hasData = metrics != null) }
         }
+
+        item { NetworkStrip(metrics) }
 
         item {
             NowPlayingStrip(
@@ -258,7 +259,6 @@ private fun PortraitSystem(
             }
         }
 
-        item { NetworkStrip(metrics) }
         item { HostCard(metrics, ui.serverVersion) }
     }
 }
@@ -851,14 +851,9 @@ private fun SystemDetailSheet(
     version: String,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = Ink,
-        contentColor = TextPrimary,
-        dragHandle = null,
+    DeckSheet(
+        onDismiss = onDismiss,
+        accent = if (target == SystemDetail.Cpu) Orange else Lime,
     ) {
         Column(
             modifier = Modifier

@@ -1,6 +1,7 @@
 package com.liquiddeck.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,7 +17,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -24,7 +24,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,19 +53,12 @@ fun SettingsSheet(
     onReconnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var host by rememberSaveable(ui.host) { mutableStateOf(ui.host) }
     var token by rememberSaveable(ui.token) { mutableStateOf(ui.token) }
     var keepAwake by rememberSaveable(ui.keepAwake) { mutableStateOf(ui.keepAwake) }
     var haptics by rememberSaveable(ui.haptics) { mutableStateOf(ui.haptics) }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = Ink,
-        contentColor = TextPrimary,
-        dragHandle = null,
-    ) {
+    DeckSheet(onDismiss = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -83,6 +75,9 @@ fun SettingsSheet(
             )
 
             Spacer(Modifier.height(22.dp))
+
+            Text("BAĞLANTI", style = MaterialTheme.typography.labelSmall, color = Cyan)
+            Spacer(Modifier.height(12.dp))
 
             OutlinedTextField(
                 value = host,
@@ -118,6 +113,9 @@ fun SettingsSheet(
 
             Spacer(Modifier.height(18.dp))
 
+            Text("PANEL DAVRANIŞI", style = MaterialTheme.typography.labelSmall, color = Cyan)
+            Spacer(Modifier.height(12.dp))
+
             SwitchRow(
                 title = "Ekranı açık tut",
                 subtitle = "Panel açıkken telefon uykuya geçmez",
@@ -138,7 +136,7 @@ fun SettingsSheet(
                 onClick = { onSave(host, token, keepAwake, haptics) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(48.dp),
                 shape = RoundedCornerShape(18.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Blue,
@@ -154,7 +152,7 @@ fun SettingsSheet(
                 onClick = onReconnect,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp),
+                    .height(48.dp),
                 shape = RoundedCornerShape(18.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
             ) {
@@ -194,7 +192,7 @@ fun SettingsSheet(
             Spacer(Modifier.height(4.dp))
 
             Text(
-                "Pano düzenleme, ses mikseri ve geçmiş grafikleri PC'deki web arayüzünde.",
+                "Tuşları Deck, ses çıkışını Ses sayfasından yönetebilirsin. Gelişmiş mikser ve geçmiş PC web panelinde.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextMuted,
             )
@@ -213,6 +211,7 @@ private fun SwitchRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(Card, RoundedCornerShape(16.dp))
+            .border(1.dp, Stroke, RoundedCornerShape(16.dp))
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -244,8 +243,8 @@ private fun settingsFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedLabelColor = Blue,
     unfocusedLabelColor = TextMuted,
     cursorColor = Blue,
-    focusedContainerColor = Card,
-    unfocusedContainerColor = Card,
+    focusedContainerColor = Ink,
+    unfocusedContainerColor = Ink,
     focusedPlaceholderColor = TextMuted.copy(alpha = 0.6f),
     unfocusedPlaceholderColor = TextMuted.copy(alpha = 0.6f),
 )

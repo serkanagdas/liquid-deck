@@ -25,7 +25,7 @@ import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Monitor
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -185,8 +185,6 @@ private fun StatusBar(ui: UiState, compact: Boolean, onSettings: () -> Unit) {
             }
         }
 
-        StatusPill(ui.connection)
-        Spacer(Modifier.width(10.dp))
         Text(
             clock,
             style = MaterialTheme.typography.titleMedium,
@@ -211,7 +209,7 @@ private fun Dock(selected: Int, compact: Boolean, onSelect: (Int) -> Unit) {
     val items: List<Triple<String, ImageVector, Int>> = listOf(
         Triple("Sistem", Icons.Rounded.Monitor, 0),
         Triple("Medya", Icons.Rounded.MusicNote, 1),
-        Triple("Ses", Icons.Rounded.VolumeUp, 2),
+        Triple("Ses", Icons.AutoMirrored.Rounded.VolumeUp, 2),
         Triple("Deck", Icons.Rounded.GridView, 3),
         Triple("Kota", Icons.Rounded.DataUsage, 4),
     )
@@ -267,10 +265,9 @@ private fun Dock(selected: Int, compact: Boolean, onSelect: (Int) -> Unit) {
 private fun rememberClock(): String {
     var value by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
-        val format = SimpleDateFormat("HH:mm", Locale.getDefault())
         while (true) {
-            value = format.format(Date())
-            delay(1_000)
+            value = SimpleDateFormat("dd MMM · HH:mm", Locale("tr", "TR")).format(Date())
+            delay(60_000 - System.currentTimeMillis() % 60_000)
         }
     }
     return value

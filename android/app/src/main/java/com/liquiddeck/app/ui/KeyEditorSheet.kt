@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,7 +25,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -34,7 +32,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,7 +44,6 @@ import com.liquiddeck.app.data.DeckButton
 import com.liquiddeck.app.ui.theme.Blue
 import com.liquiddeck.app.ui.theme.Card
 import com.liquiddeck.app.ui.theme.Cyan
-import com.liquiddeck.app.ui.theme.Ink
 import com.liquiddeck.app.ui.theme.Red
 import com.liquiddeck.app.ui.theme.Stroke
 import com.liquiddeck.app.ui.theme.TextMuted
@@ -109,22 +105,14 @@ fun KeyEditorSheet(
     onSave: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val draft = editor.draft
     val boardName = boards.firstOrNull { it.id == editor.boardId }?.name.orEmpty()
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = Ink,
-        contentColor = TextPrimary,
-        dragHandle = null,
-    ) {
+    DeckSheet(onDismiss = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .imePadding()
                 .padding(horizontal = 22.dp)
                 .padding(top = 20.dp, bottom = 26.dp),
         ) {

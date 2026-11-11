@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,12 +34,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -500,7 +497,6 @@ private fun QuotaEditorSheet(
     onSave: (QuotaProvider) -> Unit,
     onDelete: (QuotaProvider) -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var kind by remember(provider?.id) { mutableStateOf(QuotaKind.from(provider?.kind)) }
     var label by remember(provider?.id) { mutableStateOf(provider?.label.orEmpty()) }
     var key by remember(provider?.id) { mutableStateOf(provider?.key.orEmpty()) }
@@ -513,18 +509,11 @@ private fun QuotaEditorSheet(
     var note by remember(provider?.id) { mutableStateOf(provider?.note.orEmpty()) }
     var error by remember(provider?.id) { mutableStateOf<String?>(null) }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = Ink,
-        contentColor = TextPrimary,
-        dragHandle = null,
-    ) {
+    DeckSheet(onDismiss = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .imePadding()
                 .padding(horizontal = 22.dp)
                 .padding(top = 20.dp, bottom = 26.dp),
         ) {
