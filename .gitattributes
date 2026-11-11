@@ -1,0 +1,11 @@
+# Keep source diffs portable across Linux, macOS and Windows checkouts.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Intentional source assets, not generated build output.
+*.png binary
+*.jar binary
+*.wav binary
+*.bin binary
+*.argb binary

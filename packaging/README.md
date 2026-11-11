@@ -81,7 +81,7 @@ cat > ~/.config/systemd/user/liquid-deck.service <<'EOF'
 [Unit]
 Description=Liquid Deck dashboard
 [Service]
-ExecStart=/usr/bin/liquid-deck
+ExecStart=/usr/bin/liquid-deck --no-tray
 Restart=on-failure
 [Install]
 WantedBy=default.target

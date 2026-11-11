@@ -1,24 +1,39 @@
-/target
-/dist
-/AppDir
-.openchamber/
+# Rust and desktop packaging output
+/target/
+/dist/
+/AppDir/
+/appimagetool
 *.AppImage
 *.exe
-.DS_Store
-Thumbs.db
-
-# Arch packaging: makepkg output and the source tarball it unpacks
 /packaging/arch/src/
 /packaging/arch/pkg/
 /packaging/arch/*.tar.gz
-/packaging/arch/*.pkg.tar.zst
+/packaging/arch/*.pkg.tar.*
 
-# Android client
+# Local agent/editor state and logs
+.openchamber/
+.DS_Store
+Thumbs.db
+*.log
+/boards.json
+/state.json
+
+# Local credentials (templates may be committed)
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.jks
+*.keystore
+/android/keystore.properties
+
+# Android SDK settings, caches and generated artifacts
 /android/.gradle/
 /android/.kotlin/
 /android/.idea/
-/android/build/
-/android/app/build/
+/android/**/build/
+/android/**/.cxx/
+/android/**/.externalNativeBuild/
 /android/local.properties
 /android/captures/
 *.apk
