@@ -9,7 +9,7 @@
 # GitHub release tarball instead.
 
 pkgname=liquid-deck
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=1
 pkgdesc="Stream Deck and live hardware dashboard over a local web UI"
 arch=('x86_64' 'aarch64')

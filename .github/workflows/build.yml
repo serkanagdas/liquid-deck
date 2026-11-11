@@ -81,6 +81,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends musl-tools
 
       - name: Build release
+        env:
+          RUSTFLAGS: ${{ matrix.target == 'x86_64-pc-windows-msvc' && '-C target-feature=+crt-static' || '' }}
         run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Stage binary
@@ -88,18 +90,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1 | tr -d '\r')"
           case "${{ matrix.target }}" in
             x86_64-unknown-linux-musl)
-              cp "target/${{ matrix.target }}/release/liquid-deck" dist/liquid-deck-linux-x86_64
+              cp "target/${{ matrix.target }}/release/liquid-deck" "dist/liquid-deck-$VERSION-linux-x86_64"
               ;;
             x86_64-pc-windows-msvc)
-              cp "target/${{ matrix.target }}/release/liquid-deck.exe" dist/liquid-deck-windows-x86_64.exe
+              cp "target/${{ matrix.target }}/release/liquid-deck.exe" "dist/liquid-deck-$VERSION-windows-x86_64.exe"
               ;;
             aarch64-apple-darwin)
-              cp "target/${{ matrix.target }}/release/liquid-deck" dist/liquid-deck-macos-arm64
+              cp "target/${{ matrix.target }}/release/liquid-deck" "dist/liquid-deck-$VERSION-macos-arm64"
               ;;
             x86_64-apple-darwin)
-              cp "target/${{ matrix.target }}/release/liquid-deck" dist/liquid-deck-macos-x86_64
+              cp "target/${{ matrix.target }}/release/liquid-deck" "dist/liquid-deck-$VERSION-macos-x86_64"
               ;;
           esac
           ls -lh dist
@@ -131,7 +134,7 @@ jobs:
           Comment=Stream Deck and live hardware dashboard
           Exec=liquid-deck
           Icon=liquid-deck
-          Terminal=true
+          Terminal=false
           Categories=Utility;
           Keywords=dashboard;metrics;streamdeck;macro;
           EOF
@@ -157,7 +160,7 @@ jobs:
               <binary>liquid-deck</binary>
             </provides>
             <releases>
-              <release version="1.0.0" date="2026-11-07"/>
+              <release version="1.0.1" date="2026-11-12"/>
             </releases>
             <content_rating type="oars-1.1"/>
           </component>
@@ -174,7 +177,8 @@ jobs:
           curl -fsSL -o appimagetool \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
-          ARCH=x86_64 ./appimagetool --appimage-extract-and-run "$APPDIR" dist/LiquidDeck-x86_64.AppImage
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1 | tr -d '\r')"
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run "$APPDIR" "dist/liquid-deck-$VERSION-x86_64.AppImage"
           ls -lh dist
 
       - name: Upload artifacts

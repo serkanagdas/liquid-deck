@@ -22,6 +22,8 @@ mod startup;
 mod superio;
 #[cfg(windows)]
 mod tray;
+#[cfg(target_os = "linux")]
+mod tray_linux;
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -199,6 +201,23 @@ fn main() {
             .enable_all()
             .build()
             .map_err(|error| error.to_string())?;
+        #[cfg(target_os = "linux")]
+        {
+            let shutdown = Arc::new(Notify::new());
+            let headless = env::args().any(|arg| matches!(arg.as_str(), "--no-tray" | "--console"));
+            runtime.block_on(async move {
+                let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+                let tray_config = config.clone();
+                let tray_shutdown = shutdown.clone();
+                tokio::spawn(async move {
+                    if ready_rx.await.is_ok() && !headless {
+                        tray_linux::start(&tray_config, tray_shutdown).await;
+                    }
+                });
+                run(config, shutdown, Some(ready_tx)).await
+            })
+        }
+        #[cfg(not(target_os = "linux"))]
         runtime.block_on(run(config, Arc::new(Notify::new()), None))
     });
     if let Err(error) = result {
@@ -1265,8 +1284,10 @@ fn parse_config() -> Result<Config, String> {
             }
             "--lan" => bind_raw = Some("0.0.0.0".to_string()),
             "--local" => bind_raw = Some("127.0.0.1".to_string()),
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "linux"))]
             "--console" => {}
+            #[cfg(target_os = "linux")]
+            "--no-tray" => {}
             "--token" => {
                 token = Some(args.next().ok_or("--token requires a value")?);
             }
@@ -1375,6 +1396,7 @@ OPTIONS:
   --enable-startup    Windows: enable this user's tray startup at logon, then exit
   --disable-startup   Windows: disable this user's logon startup, then exit
   --console           Windows: run without the tray, with console output
+  --no-tray           Linux: run without the tray icon (services, scripts)
   --token <TOKEN>     Require this token for metrics, WebSocket and actions
   --scripts <DIR>     Enable script actions from this directory
   --config <FILE>     Board layout file (default <data>/boards.json)

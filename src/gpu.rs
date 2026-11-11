@@ -387,7 +387,8 @@ clocks.current.graphics,clocks.current.memory,power.draw,power.limit,fan.speed,p
         }
         let text = String::from_utf8_lossy(&output.stdout);
         let line = text.lines().next()?.trim();
-        (!line.is_empty() && !line.to_ascii_lowercase().contains("no devices")).then(|| line.to_string())
+        (!line.is_empty() && !line.to_ascii_lowercase().contains("no devices"))
+            .then(|| line.to_string())
     }
 
     fn number<T: std::str::FromStr>(raw: &str) -> Option<T> {
@@ -491,7 +492,8 @@ clocks.current.graphics,clocks.current.memory,power.draw,power.limit,fan.speed,p
         let hwmon = amd_hwmon(card);
         let hwmon_file = |file: &str| hwmon.as_ref().map(|dir| dir.join(file));
 
-        data.usage = read_number::<u32>(&device.join("gpu_busy_percent")).map(|value| value.min(100));
+        data.usage =
+            read_number::<u32>(&device.join("gpu_busy_percent")).map(|value| value.min(100));
         data.temp = hwmon_file("temp1_input")
             .and_then(|path| read_number::<u32>(&path))
             .map(|milli| milli / 1000)

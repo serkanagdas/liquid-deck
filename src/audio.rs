@@ -459,15 +459,16 @@ mod win {
 
     use std::ffi::c_void;
 
-    use windows::core::{interface, GUID, IUnknown, IUnknown_Vtbl, PCWSTR};
+    use windows::core::{interface, IUnknown, IUnknown_Vtbl, GUID, PCWSTR};
     use windows::Win32::Foundation::PROPERTYKEY;
     use windows::Win32::Media::Audio::{
-        eCommunications, eConsole, eMultimedia, eRender, IMMDevice, IMMDeviceEnumerator,
-        MMDeviceEnumerator, DEVICE_STATE_ACTIVE, ERole,
+        eCommunications, eConsole, eMultimedia, eRender, ERole, IMMDevice, IMMDeviceEnumerator,
+        MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
     };
     use windows::Win32::System::Com::StructuredStorage::{PropVariantClear, PROPVARIANT};
     use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_MULTITHREADED, STGM_READ,
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_MULTITHREADED,
+        STGM_READ,
     };
 
     use super::{AudioDevice, AudioSnapshot};

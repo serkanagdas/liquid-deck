@@ -1142,6 +1142,22 @@ Cron does not inherit your shell environment; set `ADB_BIN`, `ADB_TARGET`, `DECK
 
 The systemd unit above is the recommended setup. For a rootless user service, put the unit in `~/.config/systemd/user/` and use `systemctl --user enable --now liquid-deck`; make sure the user’s ADB keys are in `~/.android/adbkey`.
 
+### Linux tray (source builds)
+
+Linux desktop sessions now expose a StatusNotifierItem tray menu: **Paneli Aç**,
+**Oturum açılışında başlat**, and **Çıkış**. KDE supports this natively; GNOME
+needs an AppIndicator/StatusNotifier extension. Without a tray host the server
+continues running. Use `--no-tray` for services or headless sessions.
+
+For a per-user installation, build with `cargo build --release`, then run
+`bash packaging/install-linux-user.sh`. Open **Liquid Deck** from the application
+menu, or run `~/.local/bin/liquid-deck`. The launcher opens the browser and keeps
+the server in the tray; another launch opens the existing panel. No sudo is
+required. The autostart checkbox is initially off and writes a private
+`~/.config/autostart/liquid-deck.desktop` file when enabled.
+
+Linux tray support is included starting with v1.0.1.
+
 ### Windows
 
 - Run the release `.exe` from a terminal, or create a shortcut with `--lan --token ...`.
