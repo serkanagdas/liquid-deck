@@ -48,7 +48,10 @@ browser, not the server.
 - **Bağlantı** — WebSocket with exponential-backoff reconnect, HTTP polling
   fallback, token auth, manual host entry, saved settings.
 - **Panel** — keep-screen-on, haptic feedback, AMOLED black, CarPlay-style
-  status strip and dock. The header shows the date beside the time, without a
+  status strip and dock. Immersive fullscreen: Android's status and navigation bars are hidden while
+  the app or its floating panels are open. Swipe from an edge to reveal the
+  system controls temporarily; no phone setting, root or kiosk lock is needed.
+  The header shows the date beside the time, without a
   connected badge; offline warnings remain visible. The five pages sit in a horizontal pager: swipe left
   or right anywhere on the page area to move to the next/previous page, and the
   dock highlight follows the swipe; tapping a dock item animates to that page.

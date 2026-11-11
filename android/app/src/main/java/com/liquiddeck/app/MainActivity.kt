@@ -24,6 +24,7 @@ import com.liquiddeck.app.ui.ConnectScreen
 import com.liquiddeck.app.ui.DeckViewModel
 import com.liquiddeck.app.ui.MainShell
 import com.liquiddeck.app.ui.SettingsSheet
+import com.liquiddeck.app.ui.enterDeckFullscreen
 import com.liquiddeck.app.ui.theme.Amoled
 import com.liquiddeck.app.ui.theme.LiquidDeckTheme
 
@@ -31,11 +32,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        window.enterDeckFullscreen()
         setContent {
             LiquidDeckTheme {
                 DeckApp()
             }
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) window.enterDeckFullscreen()
     }
 
     @Composable

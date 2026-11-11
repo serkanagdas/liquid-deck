@@ -160,7 +160,7 @@ jobs:
               <binary>liquid-deck</binary>
             </provides>
             <releases>
-              <release version="1.0.2" date="2026-11-12"/>
+              <release version="1.0.3" date="2026-11-12"/>
             </releases>
             <content_rating type="oars-1.1"/>
           </component>
@@ -200,6 +200,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and lint APK
         working-directory: android

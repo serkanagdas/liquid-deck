@@ -1,5 +1,6 @@
 package com.liquiddeck.app.ui
 
+import android.view.ViewTreeObserver
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -24,13 +25,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import com.liquiddeck.app.ui.theme.Card
 import com.liquiddeck.app.ui.theme.CardRaised
 import com.liquiddeck.app.ui.theme.Cyan
@@ -49,6 +53,20 @@ fun DeckSheet(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        val view = LocalView.current
+        DisposableEffect(view) {
+            val window = (view.parent as? DialogWindowProvider)?.window
+            window?.enterDeckFullscreen()
+            val listener = ViewTreeObserver.OnWindowFocusChangeListener { focused ->
+                if (focused) window?.enterDeckFullscreen()
+            }
+            view.viewTreeObserver.addOnWindowFocusChangeListener(listener)
+            onDispose {
+                if (view.viewTreeObserver.isAlive) {
+                    view.viewTreeObserver.removeOnWindowFocusChangeListener(listener)
+                }
+            }
+        }
         BoxWithConstraints(
             Modifier.fillMaxWidth().imePadding().padding(horizontal = 18.dp, vertical = 16.dp),
             contentAlignment = Alignment.Center,
