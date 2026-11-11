@@ -7,6 +7,12 @@
 .DS_Store
 Thumbs.db
 
+# Arch packaging: makepkg output and the source tarball it unpacks
+/packaging/arch/src/
+/packaging/arch/pkg/
+/packaging/arch/*.tar.gz
+/packaging/arch/*.pkg.tar.zst
+
 # Android client
 /android/.gradle/
 /android/.kotlin/

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Liquid Deck
+GenericName=Stream Deck and system dashboard
+Comment=Stream Deck, live hardware metrics and media control in a local web UI
+Exec=liquid-deck
+Icon=liquid-deck
+Terminal=true
+Categories=Utility;
+Keywords=dashboard;metrics;streamdeck;macro;obs;media;
+StartupNotify=false

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.serkanagdas.LiquidDeck</id>
+  <name>Liquid Deck</name>
+  <summary>Stream Deck and live hardware dashboard</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      Liquid Deck serves a local web dashboard with live CPU/GPU metrics, a
+      media player, OBS controls and a configurable macro deck. It is a single
+      native binary with the UI embedded, so it needs no runtime besides a
+      browser.
+    </p>
+    <p>
+      It listens on 127.0.0.1:8787 by default and can be exposed to the LAN with
+      --lan plus a --token. The phone client and the web UI talk to the same
+      process.
+    </p>
+  </description>
+  <developer id="io.github.serkanagdas">
+    <name>Serkan Ağdaş</name>
+  </developer>
+  <launchable type="desktop-id">io.github.serkanagdas.LiquidDeck.desktop</launchable>
+  <url type="homepage">https://github.com/serkanagdas/liquid-deck</url>
+  <url type="bugtracker">https://github.com/serkanagdas/liquid-deck/issues</url>
+  <provides>
+    <binary>liquid-deck</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+    <category>System</category>
+  </categories>
+  <releases>
+    <release version="1.0.0" date="2026-11-07"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

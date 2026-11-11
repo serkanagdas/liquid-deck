@@ -1,0 +1,49 @@
+# Maintainer: Serkan Ağdaş <serkanagdas@users.noreply.github.com>
+# Build from the repository root:
+#   packaging/build-arch.sh
+# or by hand:
+#   cd packaging/arch && makepkg -f
+#
+# The source tarball is produced from the working tree so a local build packages
+# exactly the code you see; a published package would point source= at the
+# GitHub release tarball instead.
+
+pkgname=liquid-deck
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Stream Deck and live hardware dashboard over a local web UI"
+arch=('x86_64' 'aarch64')
+url="https://github.com/serkanagdas/liquid-deck"
+license=('MIT')
+depends=('gcc-libs' 'glibc')
+optdepends=(
+  'playerctl: now-playing metadata and transport on Linux'
+  'nvidia-utils: GPU telemetry through nvidia-smi'
+)
+makedepends=('cargo')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  cargo build --release --locked
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+
+  install -Dm755 target/release/liquid-deck "$pkgdir/usr/bin/liquid-deck"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+  install -Dm644 web/icon-512.png \
+    "$pkgdir/usr/share/icons/hicolor/512x512/apps/liquid-deck.png"
+  install -Dm644 web/icon-192.png \
+    "$pkgdir/usr/share/icons/hicolor/192x192/apps/liquid-deck.png"
+  install -Dm644 web/icon.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/liquid-deck.svg"
+
+  install -Dm644 packaging/arch/io.github.serkanagdas.LiquidDeck.desktop \
+    "$pkgdir/usr/share/applications/io.github.serkanagdas.LiquidDeck.desktop"
+  install -Dm644 packaging/arch/io.github.serkanagdas.LiquidDeck.appdata.xml \
+    "$pkgdir/usr/share/metainfo/io.github.serkanagdas.LiquidDeck.appdata.xml"
+}

@@ -285,42 +285,29 @@ cargo build --release --locked --target x86_64-unknown-linux-musl
 
 The result runs on most x86_64 Linux distributions without a matching glibc.
 
-### AppImage
+### Packaged builds
 
-The GitHub Actions workflow builds `LiquidDeck-x86_64.AppImage` automatically. To build one locally:
+The `packaging/` directory builds the three desktop deliverables into `dist/`.
+
+| Script | Output | Needs |
+| --- | --- | --- |
+| `packaging/build-windows.sh` | `liquid-deck-<ver>-windows-x86_64.exe` | `cargo-xwin`, `clang`/`lld` |
+| `packaging/build-arch.sh` | `liquid-deck-<ver>-1-x86_64.pkg.tar.zst` | `makepkg`, `cargo` |
+| `packaging/build-appimage.sh` | `liquid-deck-<ver>-x86_64.AppImage` | `cargo`, `curl` |
 
 ```bash
-cargo build --release --locked --target x86_64-unknown-linux-musl
-
-APPDIR="$PWD/AppDir"
-rm -rf "$APPDIR"
-mkdir -p "$APPDIR/usr/bin" \
-         "$APPDIR/usr/share/applications" \
-         "$APPDIR/usr/share/icons/hicolor/512x512/apps"
-
-cp target/x86_64-unknown-linux-musl/release/liquid-deck "$APPDIR/usr/bin/liquid-deck"
-cp web/icon-512.png "$APPDIR/liquid-deck.png"
-cp web/icon-512.png "$APPDIR/usr/share/icons/hicolor/512x512/apps/liquid-deck.png"
-
-cat > "$APPDIR/liquid-deck.desktop" <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=Liquid Deck
-Comment=Stream Deck and live hardware dashboard
-Exec=liquid-deck
-Icon=liquid-deck
-Terminal=true
-Categories=Utility;System;
-EOF
-cp "$APPDIR/liquid-deck.desktop" "$APPDIR/usr/share/applications/liquid-deck.desktop"
-
-curl -fsSL -o appimagetool \
-  https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-chmod +x appimagetool
-ARCH=x86_64 ./appimagetool --appimage-extract-and-run "$APPDIR" LiquidDeck-x86_64.AppImage
+packaging/build-windows.sh      # MSVC target cross-built from Linux
+packaging/build-arch.sh         # pacman -U dist/liquid-deck-1.0.0-1-x86_64.pkg.tar.zst
+packaging/build-appimage.sh     # ./dist/liquid-deck-1.0.0-x86_64.AppImage
 ```
 
-If FUSE is unavailable, run the AppImage with `--appimage-extract-and-run`.
+The Windows executable links the MSVC runtime statically, so it needs no Visual
+C++ redistributable; it lives in the tray and supports `--console`, `--lan` and
+`--token`. The Arch package installs the binary, hicolor icons, a desktop entry
+and AppStream metadata under `/usr`, with `playerctl` and `nvidia-utils` as
+optional dependencies. The AppImage is a single file that runs without FUSE
+(`--appimage-extract-and-run` where FUSE is missing). See
+[`packaging/README.md`](packaging/README.md) for details.
 
 ### Cross-compilation notes
 
