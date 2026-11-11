@@ -434,9 +434,126 @@ mod windows {
 
 #[cfg(windows)]
 pub use windows::{run_helper, Reader};
-#[cfg(not(windows))]
+
+/// Linux reads motherboard fans straight from `/sys/class/hwmon`, so any
+/// loaded SuperIO driver (`nct6775`, `it87`, `asus-ec-sensors`, …) shows up
+/// without extra privileges. Values are cached for a second because the
+/// sampler asks for fans, PWM and the chip name separately.
+#[cfg(target_os = "linux")]
+pub struct Reader {
+    cache: FansCache,
+}
+
+#[cfg(target_os = "linux")]
+impl Reader {
+    pub fn new() -> Self {
+        Self {
+            cache: FansCache::default(),
+        }
+    }
+
+    pub fn sample(&mut self) -> Option<f32> {
+        None
+    }
+
+    pub fn power_watts(&mut self) -> Option<f32> {
+        None
+    }
+
+    pub fn fans(&mut self) -> Vec<Option<u32>> {
+        self.cache.refresh().fans.clone()
+    }
+
+    pub fn fan_pct(&mut self) -> Option<u32> {
+        self.cache.refresh().pct
+    }
+
+    pub fn chip_name(&mut self) -> Option<String> {
+        self.cache.refresh().chip.clone()
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Default)]
+struct FanSample {
+    fans: Vec<Option<u32>>,
+    pct: Option<u32>,
+    chip: Option<String>,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Default)]
+struct FansCache {
+    at: Option<std::time::Instant>,
+    sample: FanSample,
+}
+
+#[cfg(target_os = "linux")]
+impl FansCache {
+    fn refresh(&mut self) -> &FanSample {
+        let stale = self
+            .at
+            .is_none_or(|at| at.elapsed() >= std::time::Duration::from_secs(1));
+        if stale {
+            self.sample = read_fans();
+            self.at = Some(std::time::Instant::now());
+        }
+        &self.sample
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn read_fans() -> FanSample {
+    const SKIP: [&str; 7] = [
+        "gpu", "amdgpu", "nvidia", "nouveau", "radeon", "battery", "headset",
+    ];
+
+    let mut chips: Vec<std::path::PathBuf> = match std::fs::read_dir("/sys/class/hwmon") {
+        Ok(entries) => entries.flatten().map(|entry| entry.path()).collect(),
+        Err(_) => return FanSample::default(),
+    };
+    chips.sort();
+
+    for chip in chips {
+        let name = std::fs::read_to_string(chip.join("name"))
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let lower = name.to_ascii_lowercase();
+        if lower.is_empty() || SKIP.iter().any(|skip| lower.contains(skip)) {
+            continue;
+        }
+
+        let mut fans = Vec::new();
+        for header in 1..=8 {
+            let path = chip.join(format!("fan{header}_input"));
+            match std::fs::read_to_string(&path) {
+                Ok(raw) => fans.push(raw.trim().parse::<u32>().ok()),
+                Err(_) => break,
+            }
+        }
+        if fans.is_empty() {
+            continue;
+        }
+
+        let pct = std::fs::read_to_string(chip.join("pwm1"))
+            .ok()
+            .and_then(|raw| raw.trim().parse::<u32>().ok())
+            .map(|pwm| ((pwm.min(255) as f32 / 255.0) * 100.0).round() as u32);
+
+        return FanSample {
+            fans,
+            pct,
+            chip: Some(name),
+        };
+    }
+
+    FanSample::default()
+}
+
+#[cfg(all(not(windows), not(target_os = "linux")))]
 pub struct Reader;
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(target_os = "linux")))]
 impl Reader {
     pub fn new() -> Self {
         Self

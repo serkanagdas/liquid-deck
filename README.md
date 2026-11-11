@@ -21,6 +21,7 @@ Liquid Deck runs on the machine you want to monitor, serves an embedded dashboar
 
 - [Kokpit Geliştirme Kılavuzu (Developer Guide)](#-kokpit-geliştirme-kılavuzu--developer-guide)
 - [Architecture](#architecture)
+- [Native Android client](#native-android-client-android)
 - [Requirements](#requirements)
 - [Build](#build)
 - [Run](#run)
@@ -178,6 +179,16 @@ adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
 - If the WebSocket closes, the client reconnects with exponential backoff (450 ms → 10 s, plus jitter) and polls `/api/metrics` every 2 seconds in the meantime.
 - Action buttons send an `action` message with a `request_id` and wait for `action_result`; if the WebSocket is unavailable, they fall back to `POST /api/action`.
 - A 401 locks the UI behind a token prompt. The token is stored under the `liquid-deck.token` key.
+
+### Native Android client (`android/`)
+
+`android/` contains a Kotlin + Jetpack Compose thin client for the same agent. It is not a second server: the PC still owns telemetry, media and actions, while the APK replaces the browser and adds native keep-screen-on, haptics and DataStore-persisted settings.
+
+- Android **6.0+ (API 23)**, including the Galaxy Note 4.
+- Three pages — Sistem, Medya and Deck — with board tabs, column spans, toggle state and album art.
+- WebSocket with exponential-backoff reconnect, plus the `/api/metrics` polling fallback.
+- Build: `cd android && ./gradlew :app:assembleDebug`; the APK lands in `android/app/build/outputs/apk/debug/`.
+- Full notes, protocol details and limitations: [`android/README.md`](android/README.md).
 
 ---
 
@@ -383,7 +394,9 @@ http://192.168.1.50:8787/?token=my-secret
 - **Design overhaul (unslop method):** neutral surfaces with hairlines, sentence-case labels, one accent per card (CPU orange, GPU green), 4 px spacing grid, weights 400-500, tabular figures, single Turkish wording. The large numbers and the provenance line stay the only strong elements; no blur or looping animation was added.
 - **Distance-first system screen:** CPU and GPU each occupy a main card with large, high-contrast temperature and utilization numbers. The large layout uses roughly 98 px temperature digits on the Note 4's landscape viewport; temperature colors still follow their existing thresholds. RAM is a compact percentage/used-total item in the bottom bar, not a large ring card. Portrait stacks the two hardware cards; landscape puts CPU first on the left, GPU on the right. Live rings and the VRAM fill meter have been removed; sensor sampling, history, startup and automatic phone connection are unchanged.
 - The former network card is now a detailed **NVIDIA GPU** card (model, utilization, temperature, VRAM, graphics clock, power/limit and fan). **Download / Upload / TCP Ping** remain in the bottom bar on both dashboard pages. The live network graph has been removed; optional 24-hour history graphs remain available.
-- On Windows, NVIDIA telemetry dynamically loads the installed driver's `System32/nvml.dll`, reads GPU index 0 on the existing sampling interval, and makes no GPU queries while the panel is idle. No `nvidia-smi` process, new timer, bundled driver library or additional crate is required. Unsupported individual measurements stay null. Other GPU vendors/platforms are not supported yet. Set `LIQUID_DECK_GPU=off` to disable NVML entirely (useful for hybrid laptops where monitoring may keep a discrete GPU awake).
+- On Windows, NVIDIA telemetry dynamically loads the installed driver's `System32/nvml.dll`, reads GPU index 0 on the existing sampling interval, and makes no GPU queries while the panel is idle. No `nvidia-smi` process, new timer, bundled driver library or additional crate is required. Unsupported individual measurements stay null. Set `LIQUID_DECK_GPU=off` to disable NVML entirely (useful for hybrid laptops where monitoring may keep a discrete GPU awake).
+- On Linux the same card is filled from `nvidia-smi` when the NVIDIA driver is present (usage, temperature, VRAM, clocks, power/limit, fan percentage and P-state) or from the `amdgpu` sysfs files otherwise (usage, VRAM, temperature, power and fan RPM/PWM). The CLI is only spawned while a client is actively watching, so an idle deck runs no extra process; `LIQUID_DECK_GPU=off` still disables it.
+- Linux fan headers come from `/sys/class/hwmon`: whichever SuperIO driver the kernel loaded (Nuvoton `nct6775`, ITE `it87`, ASUS EC, …) is read through its `fan*_input` and `pwm1` files, cached for one second. No elevated helper or PawnIO module is involved. If no driver is loaded the list is empty, so load one for your board (e.g. `sudo modprobe nct6775`).
 - GPU utilization, temperature, VRAM percentage, power and graphics clock are also included in phone-local history without changing or deleting existing records.
 - The dashboard has **System / Action Deck** pages, with horizontal swipes or navigation buttons. Large custom decks scroll inside their own panel, not the whole page. Swiping over an action key cancels the action and long-press.
 - **Ayarlar** selects **Hafif Cam / Tasarruf** and **Normal / Büyük**, toggles recording and sets a 15/30/60 ms ping-difference alert threshold. Settings belong to each browser, not the server deck configuration.
