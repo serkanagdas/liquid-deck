@@ -52,3 +52,4 @@ pacman -Qp "$OUT/$PKG-$VER"-*.pkg.tar.zst 2>/dev/null || true
 # makepkg unpacks the sources into packaging/arch/src and stages the package
 # under packaging/arch/pkg; both are build output and must stay out of git.
 rm -rf "$ARCH_DIR/src" "$ARCH_DIR/pkg" "$TARBALL"
+rm -f "$ARCH_DIR/$PKG-$VER"-*.pkg.tar.zst
