@@ -44,7 +44,7 @@ pub fn show_error(message: &str) {
         MessageBoxW(
             ptr::null_mut(),
             wide(message).as_ptr(),
-            wide("Liquid Deck").as_ptr(),
+            wide("Robin").as_ptr(),
             MB_OK | MB_ICONERROR,
         );
     }
@@ -108,7 +108,7 @@ impl PhoneConnection {
         }
         let phone = self.clone();
         runtime.spawn(async move {
-            phone.publish("Liquid Deck — Note 4 bağlanıyor");
+            phone.publish("Robin — Note 4 bağlanıyor");
             let delays: &[u64] = if automatic { &[0, 5, 10, 20, 40] } else { &[0] };
             let mut last_error = String::new();
             let mut connected = false;
@@ -132,9 +132,9 @@ impl PhoneConnection {
             }
             phone.busy.store(false, Ordering::Relaxed);
             phone.publish(if connected {
-                "Liquid Deck — Note 4 bağlı"
+                "Robin — Note 4 bağlı"
             } else {
-                "Liquid Deck — Note 4 çevrimdışı; menüden yeniden deneyin"
+                "Robin — Note 4 çevrimdışı; menüden yeniden deneyin"
             });
             if !connected && !automatic {
                 let _ = tokio::task::spawn_blocking(move || show_error(&last_error)).await;
@@ -162,12 +162,7 @@ unsafe extern "system" fn window_proc(
         }
         match message {
             CONNECTION_STATUS => {
-                let status = context
-                    .phone
-                    .status
-                    .lock()
-                    .map(|s| *s)
-                    .unwrap_or("Liquid Deck");
+                let status = context.phone.status.lock().map(|s| *s).unwrap_or("Robin");
                 let mut icon = context.icon;
                 icon.szTip.fill(0);
                 let tooltip = wide(status);
@@ -397,7 +392,7 @@ pub fn run(config: Config) -> Result<(), String> {
                 url: panel_url(&config, true),
                 port: config.bind.port(),
                 busy: Arc::new(AtomicBool::new(false)),
-                status: Arc::new(Mutex::new("Liquid Deck")),
+                status: Arc::new(Mutex::new("Robin")),
                 window: 0,
             },
         });
@@ -405,7 +400,7 @@ pub fn run(config: Config) -> Result<(), String> {
         let window = CreateWindowExW(
             0,
             class_name.as_ptr(),
-            wide("Liquid Deck").as_ptr(),
+            wide("Robin").as_ptr(),
             0,
             0,
             0,
@@ -455,7 +450,7 @@ pub fn run(config: Config) -> Result<(), String> {
         } else {
             icon
         };
-        let tooltip = wide("Liquid Deck — çift tık: paneli aç");
+        let tooltip = wide("Robin — çift tık: paneli aç");
         context.icon.szTip[..tooltip.len()].copy_from_slice(&tooltip);
         if Shell_NotifyIconW(NIM_ADD, &context.icon) == 0 {
             DestroyWindow(window);

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Liquid Deck
+Name=Robin
 GenericName=Stream Deck and system dashboard
 Comment=Stream Deck, live hardware metrics and media control in a local web UI
 Exec=liquid-deck

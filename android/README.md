@@ -1,4 +1,4 @@
-# Liquid Deck — native Android client
+# Robin — native Android client
 
 This folder contains a native **Kotlin + Jetpack Compose** client for the Liquid
 Deck PC agent. It is a thin client: the Rust binary on the PC still samples the

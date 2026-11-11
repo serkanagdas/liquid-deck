@@ -77,7 +77,7 @@ fun ConnectScreen(ui: UiState, onConnect: (String, String) -> Unit) {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    "LD",
+                    "R",
                     fontSize = 27.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.Black,
@@ -86,7 +86,7 @@ fun ConnectScreen(ui: UiState, onConnect: (String, String) -> Unit) {
 
             Spacer(Modifier.height(24.dp))
             Text(
-                "LIQUID DECK",
+                "ROBIN",
                 style = MaterialTheme.typography.labelSmall,
                 color = Cyan,
             )

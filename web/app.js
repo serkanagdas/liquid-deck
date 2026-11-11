@@ -523,7 +523,7 @@
         if (state.host) {
           setText(els.brandHost, state.host);
           setText(els.sysHost, state.host);
-          document.title = `Liquid Deck · ${state.host}`;
+          document.title = `Robin · ${state.host}`;
         }
         if (message.os) setText(els.sysOs, message.os);
         if (state.version) setText(els.deckVersion, `v${state.version}`);
@@ -1388,7 +1388,7 @@
       els.deck.style.gridTemplateColumns = "repeat(4, minmax(0, 1fr))";
       els.deck.innerHTML = `<div class="deck-empty">
         <strong>Waiting for the deck…</strong>
-        <span>Connecting to the Liquid Deck server.</span>
+        <span>Connecting to the Robin server.</span>
       </div>`;
       return;
     }

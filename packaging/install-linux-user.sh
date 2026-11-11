@@ -40,7 +40,7 @@ chmod 755 "$HOME/.local/bin/liquid-deck"
 cat > "$APPS/liquid-deck.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=Liquid Deck
+Name=Robin
 Comment=Donanım panosu ve Stream Deck
 Exec="$HOME/.local/bin/liquid-deck"
 Icon=$ICONS/liquid-deck.png
@@ -52,4 +52,4 @@ if command -v update-desktop-database >/dev/null; then
     update-desktop-database "$APPS"
 fi
 echo "Installed: $HOME/.local/bin/liquid-deck"
-echo "Open Liquid Deck from your application menu."
+echo "Open Robin from your application menu."

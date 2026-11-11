@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>io.github.serkanagdas.LiquidDeck</id>
-  <name>Liquid Deck</name>
+  <name>Robin</name>
   <summary>Stream Deck and live hardware dashboard</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <description>
     <p>
-      Liquid Deck serves a local web dashboard with live CPU/GPU metrics, a
+      Robin serves a local web dashboard with live CPU/GPU metrics, a
       media player, OBS controls and a configurable macro deck. It is a single
       native binary with the UI embedded, so it needs no runtime besides a
       browser.

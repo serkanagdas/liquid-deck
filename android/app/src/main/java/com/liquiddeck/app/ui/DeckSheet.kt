@@ -86,7 +86,7 @@ fun DeckSheet(
                             .padding(start = 22.dp, end = 6.dp, top = 2.dp, bottom = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("LIQUID DECK", style = MaterialTheme.typography.labelSmall, color = accent)
+                        Text("ROBIN", style = MaterialTheme.typography.labelSmall, color = accent)
                         Spacer(Modifier.weight(1f))
                         IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Rounded.Close, "Kapat", tint = TextMuted, modifier = Modifier.size(20.dp))

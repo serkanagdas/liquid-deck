@@ -360,7 +360,7 @@ async fn run(
         .await
         .map_err(|error| format!("server error: {error}"))?;
 
-    println!("\n  Liquid Deck stopped.");
+    println!("\n  Robin stopped.");
     Ok(())
 }
 
@@ -1383,7 +1383,7 @@ fn parse_config() -> Result<Config, String> {
 fn print_help() {
     println!(
         "\
-Liquid Deck {VERSION} — Stream Deck & live hardware dashboard
+Robin {VERSION} — Stream Deck & live hardware dashboard
 
 USAGE:
   liquid-deck [OPTIONS]
@@ -1429,7 +1429,7 @@ EXAMPLES:
 async fn print_banner(config: &Config, local: SocketAddr) {
     let port = local.port();
     println!();
-    println!("  Liquid Deck v{VERSION}");
+    println!("  Robin v{VERSION}");
     if local.ip().is_loopback() {
         println!("  Local    http://127.0.0.1:{port}");
     } else {

@@ -156,7 +156,7 @@ private fun StatusBar(ui: UiState, compact: Boolean, onSettings: () -> Unit) {
             if (compact) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "LIQUID DECK",
+                        "ROBIN",
                         style = MaterialTheme.typography.labelSmall,
                         color = Cyan,
                     )
@@ -171,7 +171,7 @@ private fun StatusBar(ui: UiState, compact: Boolean, onSettings: () -> Unit) {
                 }
             } else {
                 Text(
-                    "LIQUID DECK",
+                    "ROBIN",
                     style = MaterialTheme.typography.labelSmall,
                     color = Cyan,
                 )

@@ -130,7 +130,7 @@ jobs:
           cat > "$APPDIR/liquid-deck.desktop" <<'EOF'
           [Desktop Entry]
           Type=Application
-          Name=Liquid Deck
+          Name=Robin
           Comment=Stream Deck and live hardware dashboard
           Exec=liquid-deck
           Icon=liquid-deck
@@ -144,12 +144,12 @@ jobs:
           <?xml version="1.0" encoding="UTF-8"?>
           <component type="desktop-application">
             <id>io.github.serkanagdas.LiquidDeck</id>
-            <name>Liquid Deck</name>
+            <name>Robin</name>
             <summary>Stream Deck and live hardware dashboard</summary>
             <metadata_license>CC0-1.0</metadata_license>
             <project_license>MIT</project_license>
             <description>
-              <p>Liquid Deck serves a local dashboard with system metrics, a media player and a configurable macro deck.</p>
+              <p>Robin serves a local dashboard with system metrics, a media player and a configurable macro deck.</p>
             </description>
             <developer id="io.github.serkanagdas">
               <name>Serkan Ağdaş</name>
@@ -206,6 +206,13 @@ jobs:
       - name: Build and lint APK
         working-directory: android
         run: ./gradlew :app:assembleDebug :app:lintDebug -Dkotlin.compiler.execution.strategy=in-process
+      - name: Keep Android lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-lint-reports
+          path: android/app/build/reports/lint-results-debug.*
+          if-no-files-found: ignore
       # The downloadable APK is attached by the release maintainer using the
       # existing signing key; CI's ephemeral debug key would break upgrades.
 
@@ -226,6 +233,6 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*
+          files: release/liquid-deck-*
           generate_release_notes: true
           fail_on_unmatched_files: true

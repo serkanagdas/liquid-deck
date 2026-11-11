@@ -1,8 +1,12 @@
-# Liquid Deck
+# Robin
 
-<img src="assets/icon.png" width="112" align="right" alt="Liquid Deck icon">
+<img src="assets/icon.png" width="112" align="right" alt="Robin icon">
 
 **A single-binary, cross-platform Stream Deck and live hardware dashboard with an iOS Liquid Glass web UI.**
+
+The application is now named **Robin**. Existing `liquid-deck` commands,
+environment variables, package IDs and data paths are intentionally preserved
+so existing installations, settings and Android upgrades keep working.
 
 Liquid Deck runs on the machine you want to monitor, serves an embedded dashboard over HTTP and WebSocket, and turns a phone or tablet — including a Galaxy Note 4 — into an always-on hardware panel and macro deck. There is no Electron, no Node runtime, no external font or asset CDN, and no database. The release binary is about **1.8 MB** and idles at roughly **3 MB RSS**.
 

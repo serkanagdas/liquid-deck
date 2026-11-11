@@ -67,7 +67,7 @@ impl Tray for DeckTray {
     }
 
     fn title(&self) -> String {
-        "Liquid Deck".into()
+        "Robin".into()
     }
 
     fn icon_name(&self) -> String {
@@ -108,7 +108,7 @@ impl Tray for DeckTray {
 
     fn tool_tip(&self) -> ToolTip {
         ToolTip {
-            title: "Liquid Deck".into(),
+            title: "Robin".into(),
             description: format!("Panel: {}\nSol tık: paneli aç", self.url),
             ..Default::default()
         }
@@ -237,7 +237,7 @@ fn autostart_entry() -> String {
     format!(
         "[Desktop Entry]\n\
          Type=Application\n\
-         Name=Liquid Deck\n\
+         Name=Robin\n\
          Icon=liquid-deck\n\
          Comment=Stream Deck paneli ve donanım panosu\n\
          Exec={}\n\
