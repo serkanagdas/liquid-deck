@@ -4,7 +4,10 @@
 //! the protocol natively. Nothing here links a GUI toolkit, so the binary keeps
 //! its size and the server still runs headless with `--no-tray`.
 
-use std::{io::Write, os::unix::fs::OpenOptionsExt, path::PathBuf, process::Stdio, sync::Arc};
+use std::{
+    io::Write, os::unix::fs::OpenOptionsExt, path::PathBuf, process::Stdio, sync::Arc,
+    time::Duration,
+};
 
 use ksni::menu::{CheckmarkItem, MenuItem, StandardItem};
 use ksni::{Icon, ToolTip, Tray, TrayMethods};
@@ -183,26 +186,44 @@ pub async fn start(config: &Config, shutdown: Arc<Notify>) {
     }
 
     let autostart_file = autostart_path();
-    let tray = DeckTray {
-        url: panel_url(config),
-        shutdown,
-        autostart: autostart_file
-            .as_ref()
-            .map(|path| path.exists())
-            .unwrap_or(false),
-        autostart_file,
-    };
+    let autostart = autostart_file
+        .as_ref()
+        .map(|path| path.exists())
+        .unwrap_or(false);
+    let url = panel_url(config);
 
-    match tray.spawn().await {
-        Ok(handle) => {
-            // Retain the service handle for the life of the runtime.
-            tokio::spawn(async move {
-                let _handle = handle;
-                std::future::pending::<()>().await
-            });
+    // At login this process can start before the shell's AppIndicator extension
+    // has exported org.kde.StatusNotifierWatcher. Registration then fails with
+    // ServiceUnknown and the icon would stay missing for the whole session, so
+    // keep retrying for a minute instead of giving up after the first attempt.
+    const ATTEMPTS: u32 = 31;
+    const RETRY_DELAY: Duration = Duration::from_secs(2);
+    let mut last_error = String::new();
+    for attempt in 0..ATTEMPTS {
+        let tray = DeckTray {
+            url: url.clone(),
+            shutdown: shutdown.clone(),
+            autostart,
+            autostart_file: autostart_file.clone(),
+        };
+        match tray.spawn().await {
+            Ok(handle) => {
+                // Retain the service handle for the life of the runtime.
+                tokio::spawn(async move {
+                    let _handle = handle;
+                    std::future::pending::<()>().await
+                });
+                return;
+            }
+            Err(error) => {
+                last_error = error.to_string();
+                if attempt + 1 < ATTEMPTS {
+                    tokio::time::sleep(RETRY_DELAY).await;
+                }
+            }
         }
-        Err(error) => eprintln!("liquid-deck: tray icon unavailable: {error}"),
     }
+    eprintln!("liquid-deck: tray icon unavailable after {ATTEMPTS} attempts: {last_error}");
 }
 
 fn panel_url(config: &Config) -> String {
