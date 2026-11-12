@@ -128,19 +128,21 @@ For a smaller, non-debuggable build, open the project in Android Studio and use
    `ws://<host>/ws?token=...`.
 
 The server prints the LAN address and port on startup. Allow port `8787` through
-the PC firewall.
+the PC firewall. Enter the host's LAN address, never `0.0.0.0` (that is only a
+server bind address) and never `127.0.0.1` (that is the phone itself).
 
 If the phone still cannot reach the port although both devices are on the same
 Wi-Fi (some routers and firewalls block client-to-client traffic), tunnel it
-over the adb connection instead:
+over the adb connection as a limited workaround instead:
 
 ```bash
 adb reverse tcp:8787 tcp:8787
 ```
 
-Then enter `127.0.0.1:8787` in the app. The tunnel goes away when the cable is
-unplugged or adb disconnects, so it is a testing workaround rather than a
-replacement for a reachable LAN port.
+Then enter `127.0.0.1:8787` in the app. This path needs developer options and a
+working Wi-Fi ADB daemon; the tunnel disappears when adb disconnects or the PC
+reboots, and `adb tcpip 5555` resets when the phone reboots. It is a testing
+workaround, not a replacement for a reachable LAN port.
 
 The connection test above only covers the PC; the Kota page needs working
 internet from the tablet itself. If the phone reports "Ağa ulaşılamadı" while

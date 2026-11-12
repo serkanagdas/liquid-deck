@@ -32,7 +32,7 @@ Liquid Deck runs on the machine you want to monitor, serves an embedded dashboar
 - [Configuration](#configuration)
 - [Actions](#actions)
 - [HTTP and WebSocket API](#http-and-websocket-api)
-- [Galaxy Note 4 panel over ADB](#galaxy-note-4-panel-over-adb)
+- [Galaxy Note 4 panel (LAN or optional ADB)](#galaxy-note-4-panel-lan-or-optional-adb)
 - [Deployment](#deployment)
 - [Security](#security)
 - [CI and release artifacts](#ci-and-release-artifacts)
@@ -77,20 +77,24 @@ Web panelini tarayıcında aç:
   2. `web/app.js` içerisindeki `ACTIONS` listesine eylemin adını tanımla.
   3. Buton tasarımlarını tarayıcıda canlı olarak paneldeki **Sliders (Özelleştir)** menüsünden veya `boards.json` dosyasından görsel olarak yapılandırabilirsin.
 
-### 4. Galaxy Note 4 (Masandaki Panel) ile Bağlantı
+### 4. Galaxy Note 4 / Telefon Paneli ile Bağlantı (ADB'siz)
 
-Note 4 cihazına Wi-Fi ADB üzerinden tek komutla bağlanıp port yönlendirmesi yapabilirsin:
+Önerilen ve normal yol doğrudan LAN bağlantısıdır; ADB gerekmez:
 
 ```bash
-# 1. Wi-Fi ADB ile Note 4'e bağlan
-adb connect 192.168.1.101:5555
+# 1. Sunucuyu LAN'a aç (token kullanman önerilir)
+cargo run --release -- --lan --token "gizli-sifreniz"
 
-# 2. Portu yönlendir (Note 4'teki 8787 portu bilgisayarındaki 8787 portuna bağlanır)
-adb reverse tcp:8787 tcp:8787
-
-# 3. Note 4'te Via Browser veya Chrome üzerinden aç:
-adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
+# 2. Linux'ta yalnızca yerel ağ için 8787'yi aç
+sudo ufw allow from 192.168.1.0/24 to any port 8787 proto tcp comment 'Robin panel'
 ```
+
+3. Telefondaki APK'da sunucu adresini bilgisayarın LAN IP'siyle gir: örneğin `192.168.1.50:8787` (token kullandıysan aynı token).
+4. APK'yı aç; doğrudan bağlanır. Masaüstü tarayıcısında `http://192.168.1.50:8787/` çalışmaya devam eder.
+
+`0.0.0.0` yalnızca sunucunun dinleme adresidir; telefonda/tarayıcıda hedef adres olarak kullanılmaz. Telefonda `127.0.0.1` ise telefonun kendisini gösterir.
+
+ADB isteğe bağlıdır ve yalnızca sınırlı senaryolar içindir: port açamadığın kilitli bir ağ, sunucuyu yalnızca `127.0.0.1`e bağlama veya ekranı uyandırma/uyutma. Ayrıntılar ve sınırlamalar: [Galaxy Note 4 paneli (LAN veya isteğe bağlı ADB)](#galaxy-note-4-panel-lan-or-optional-adb).
 
 ### 5. Neler Yaptık? (Deckboard Paritesi & Termal Overhaul)
 
@@ -189,6 +193,7 @@ adb shell am start -n mark.via.gp/mark.via.Shell -d "http://127.0.0.1:8787/"
 `android/` contains a Kotlin + Jetpack Compose thin client for the same agent. It is not a second server: the PC still owns telemetry, media and actions, while the APK replaces the browser and adds native keep-screen-on, haptics and DataStore-persisted settings.
 
 - Android **6.0+ (API 23)**, including the Galaxy Note 4.
+- Connects directly to `http://<host>:8787` over the LAN or Tailscale; no ADB, reverse tunnel or USB debugging is required. ADB is only an optional helper for screen control or localhost-only hosts.
 - Five pages — Sistem, Medya, Ses, Deck and Kota — with board tabs, column spans, toggle state, album art, PC audio-output switching and subscription quota cards.
 - WebSocket with exponential-backoff reconnect, plus the `/api/metrics` polling fallback.
 - Build: `cd android && ./gradlew :app:assembleDebug`; the APK lands in `android/app/build/outputs/apk/debug/`.
@@ -236,7 +241,7 @@ Wayland compositors may block synthetic input. `wtype` works on wlroots-based co
 - **Visual Studio Build Tools** with the “Desktop development with C++” workload (MSVC linker).
 - PowerShell 5.1+ (built in) for key, media and volume actions.
 - Audio output switching needs nothing extra: it uses Core Audio through COM. Per-device volume, mute and the per-app mixer are not available on Windows.
-- The core server has no extra runtime dependencies. Optional Note 4 integration needs ADB; the optional native Zen 4 CPU temperature helper needs an already-installed PawnIO driver and one-time administrator-approved setup.
+- The core server has no extra runtime dependencies. The panel itself connects over HTTP/WebSocket and needs no ADB; only the optional Note 4 screen-control/reverse-tunnel helpers need ADB. The optional native Zen 4 CPU temperature helper needs an already-installed PawnIO driver and one-time administrator-approved setup.
 
 ### macOS
 
@@ -914,21 +919,48 @@ When the page is served over HTTPS, `app.js` automatically uses `wss://`.
 
 ---
 
-## Galaxy Note 4 panel over ADB
+## Galaxy Note 4 panel (LAN or optional ADB)
 
-The Galaxy Note 4 (SM-N910C, 1440 × 2560 AMOLED, Android 10) makes an excellent dedicated panel: the UI is designed for its portrait resolution, the true-black background suits AMOLED, and ADB can wake or sleep it without installing anything on the tablet.
+The Galaxy Note 4 (SM-N910C, 1440 × 2560 AMOLED, Android 10) makes an excellent dedicated panel: the UI is designed for its portrait resolution, the true-black background suits AMOLED, and the native Android app turns it into the panel.
+
+The normal setup is a direct LAN (or Tailscale) connection. ADB is optional and deliberately limited to two cases: screen wake/sleep commands, or a server that cannot expose a LAN port and therefore binds only to `127.0.0.1`. The dashboard, the APK and the web UI never require ADB.
 
 ```text
 ┌────────────────────┐        Wi-Fi / Tailscale         ┌────────────────────┐
 │  Galaxy Note 4      │  HTTP :8787 + WebSocket          │  Host (Linux/Win/  │
-│  Chrome / PWA       │ ───────────────────────────────► │  macOS)            │
+│  Robin APK / Chrome │ ───────────────────────────────► │  macOS)            │
 │  dashboard + deck   │ ◄─────────────────────────────── │  liquid-deck       │
-└─────────┬──────────┘        ADB :5555                  └─────────┬──────────┘
-          │                                                        │
-          └──────────────── adb connect / input keyevent ──────────┘
+└────────────────────┘                                  └────────────────────┘
+
+Optional, not part of the panel connection:
+  ADB :5555  ──►  screen wake/sleep or adb reverse for a localhost-only host
 ```
 
-### 1. One-time ADB setup
+### 0. Direct LAN connection (recommended, no ADB)
+
+Start the server on an interface the phone can reach, allow TCP 8787 on the host firewall, and enter the host's LAN (or Tailscale) address in the Android app. Nothing else is needed: no USB cable, no Wi-Fi ADB, no `adb reverse`, and port 5555 stays closed.
+
+```bash
+# Host: bind every LAN interface and protect the panel with a token
+liquid-deck --lan --token "change-me"
+
+# Linux (UFW): allow only the local subnet
+sudo ufw allow from 192.168.1.0/24 to any port 8787 proto tcp comment 'Robin panel'
+
+# Windows (elevated PowerShell): private networks only
+New-NetFirewallRule -DisplayName "Robin panel" -Direction Inbound `
+  -Protocol TCP -LocalPort 8787 -Action Allow -Profile Private
+```
+
+Then, in the APK: server address `192.168.1.50:8787` (the host's address) and the token, if configured. The app probes `/api/health` and `/api/auth`, then opens `/ws`. From a phone browser, the same panel is at `http://192.168.1.50:8787/`.
+
+Use `ip addr` (Linux), `ipconfig` (Windows) or `ifconfig` (macOS) to find the host address. For Tailscale, use the host's `100.x.y.z` address and allow the port in the tailnet ACL.
+
+`0.0.0.0` is a **bind** address, not a destination: never type it into the APK or a browser. On the phone, `127.0.0.1` means the phone itself, so it only works when an ADB reverse tunnel is active (see below). Also check that both devices are on the same VLAN and that router client isolation is off.
+
+### 1. One-time ADB setup (optional, limited)
+
+> **ADB is a fallback, not the normal transport.** It requires developer options on the phone, a TCP ADB daemon and a trusted network. `adb tcpip 5555` is lost on every phone reboot, and `adb reverse` lives only as long as that ADB server/connection; an ADB restart, a Wi-Fi drop or a PC reboot removes the tunnel and it has to be re-created. ADB port 5555 is highly privileged, so never expose it outside a trusted LAN or an ACL-protected tailnet. If the host has a reachable LAN address, use [section 0](#0-direct-lan-connection-recommended-no-adb) instead.
 
 On the Note 4:
 
@@ -1166,12 +1198,13 @@ Linux tray support is included starting with v1.0.1.
 
 - Run the release `.exe` from a terminal, or create a shortcut with `--lan --token ...`.
 - **Automatic startup:** the tray's **Windows ile Başlat** checkbox or `liquid-deck.exe --enable-startup` registers this exact executable and its arguments in this user's `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. No elevation is required. `--disable-startup` removes only Liquid Deck's entry. This starts at **user logon**, not before login. Moving/deleting the executable requires re-enabling startup from its new location. Only one tray instance is allowed per interactive session.
-- **Automatic Note 4 connection:** each normal tray launch waits until the server listener is ready, then attempts ADB connection/reverse/wake/Via launch. Network boot delays are covered by five attempts (delays 0/5/10/20/40 seconds, each attempt limited to 20 seconds). Success stops all retries; after failure, use **Note 4’e Bağlan** to retry manually. Automatic failures never open blocking error dialogs. The tray tooltip shows connection status. ADB is resolved from PATH, Android SDK locations and WinGet Platform-Tools even when the startup PATH is incomplete. `LIQUID_DECK_ADB` can specify an absolute ADB path, `LIQUID_DECK_ADB_TARGET` overrides the phone address, and `LIQUID_DECK_AUTO_CONNECT=off` opts out. This cannot enable Wi-Fi ADB on a phone whose ADB daemon is disabled after its own reboot; that still requires the phone's debugging setup.
+- **Normal LAN setup (no ADB):** start with `--lan --token ...`, allow TCP 8787 on private networks, and enter the host's LAN address in the Android app. Opening the APK then connects directly; ADB, `adb reverse` and port 5555 are not involved. Use the ADB path below only for a localhost-only bind or for remote screen wake/sleep.
+- **Automatic Note 4 connection (optional ADB path):** each normal tray launch waits until the server listener is ready, then attempts ADB connection/reverse and wakes the phone. Set `LIQUID_DECK_AUTO_CONNECT=off` to skip this entirely on a LAN-only machine. It no longer opens a browser or app on the phone; open the Android app yourself and it connects to the server. Network boot delays are covered by five attempts (delays 0/5/10/20/40 seconds, each attempt limited to 20 seconds). Success stops all retries; after failure, use **Note 4’e Bağlan** to retry manually. Automatic failures never open blocking error dialogs. The tray tooltip shows connection status. ADB is resolved from PATH, Android SDK locations and WinGet Platform-Tools even when the startup PATH is incomplete. `LIQUID_DECK_ADB` can specify an absolute ADB path and `LIQUID_DECK_ADB_TARGET` overrides the phone address. This cannot enable Wi-Fi ADB on a phone whose ADB daemon is disabled after its own reboot; that still requires the phone's debugging setup.
 - **Optional Ryzen CPU temperature:** on this Zen 4 Raphael machine, a tiny read-only helper uses the already-installed PawnIO driver and an unmodified, signed AMD module from LibreHardwareMonitor v0.9.6. No new driver, fan controller, .NET monitor or HTTP service is installed. The helper reads only the fixed CPU temperature register, cooperates with FanControl's PCI mutex, and shares the latest value through session-local shared memory (no temperature cache/log files). CPU readings older than 8 seconds, partial writes and invalid/missing readings are rejected. The card now shows a CPU sensor only, never the hottest GPU/disk temperature.
 - Install that helper **once with UAC approval** by running `integrations/install-cpu-sensor.ps1 -SourceExe <absolute-release-exe-path>` as administrator. It copies the helper executable into administrator-owned `Program Files\Liquid Deck Sensors` with a read/execute-only Users ACL and creates the demand-start, highest-privilege task **Liquid Deck CPU Sensor** for the current interactive user. The main tray remains unelevated, starts the helper task once after becoming ready, and owns a mutex lease; quitting/crashing the tray ends the helper too. The elevated helper does not serve the panel, execute deck actions or accept commands. Other CPU models currently use CPU-labelled sysinfo sensors if available, otherwise report missing. The native reader is deliberately restricted to AMD family 19h/model 61h (Zen 4 Raphael).
 - Windows now starts in the system tray by default, with no console window in release builds. Double-click the tray icon to open the panel; right-click for **Paneli Aç**, **Note 4’e Bağlan** and **Çıkış**. Use `--console` for terminal-only operation and diagnostic output.
 - The tray uses the native blocking Windows message loop: no GUI framework, animations, periodic connection checks or additional telemetry timers. The existing single-thread Tokio server runs on one background thread.
-- **Note 4’e Bağlan** manually retries the same connection/reverse/wake/Via sequence used automatically at launch. ADB can be on `PATH`, in Android SDK/WinGet locations, or supplied with `LIQUID_DECK_ADB`. The default phone is `192.168.1.101:5555`; override it with `LIQUID_DECK_ADB_TARGET`. Token-protected panel URLs are supported. Double-clicking the EXE still binds only to localhost by default, which works with ADB reverse; `--lan` remains opt-in.
+- **Note 4’e Bağlan** is the manual form of the optional ADB path: it retries the same connection/reverse/wake sequence; neither path launches a browser or app on the phone. ADB can be on `PATH`, in Android SDK/WinGet locations, or supplied with `LIQUID_DECK_ADB`. The default phone is `192.168.1.101:5555`; override it with `LIQUID_DECK_ADB_TARGET`. Double-clicking the EXE still binds only to localhost by default, which is the one case that needs ADB reverse; `--lan` plus the LAN address in the APK avoids ADB completely.
 - Prefer the built-in **Windows ile Başlat** checkbox for normal logon startup; Task Scheduler/PowerShell wrappers above are optional custom deployment examples, not required for the tray app.
 - To run as a service, use [NSSM](https://nssm.cc/) or a Windows service wrapper. Keep the token in the service environment, not in a world-readable script.
 - Add a firewall rule for TCP 8787 only on private networks:
@@ -1294,8 +1327,9 @@ Another process owns the port. Find it with `ss -ltnp | grep 8787` (Linux), `lso
 ### The tablet cannot reach the host
 
 - Start with `--lan`, not the default localhost bind.
-- Allow TCP 8787 through the host firewall.
-- Use the host’s LAN IP (`ip addr`, `ipconfig`, `ifconfig`), not `127.0.0.1`.
+- Allow TCP 8787 through the host firewall (on Linux, `sudo ufw status` should list 8787).
+- Use the host’s LAN IP (`ip addr`, `ipconfig`, `ifconfig`), not `127.0.0.1` and never `0.0.0.0`.
+- `0.0.0.0` is only what the server binds to; it is not a destination address. On the phone, `127.0.0.1` points at the phone itself and requires `adb reverse`.
 - Check that both devices are on the same VLAN and that client isolation is off.
 - For Tailscale, use the host’s `100.x.y.z` address and allow the port in the tailnet ACL.
 
