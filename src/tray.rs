@@ -50,8 +50,8 @@ pub fn show_error(message: &str) {
     }
 }
 
-fn panel_url(config: &Config, phone: bool) -> String {
-    let host = if phone || config.bind.ip().is_unspecified() {
+fn panel_url(config: &Config) -> String {
+    let host = if config.bind.ip().is_unspecified() {
         "127.0.0.1".into()
     } else {
         match config.bind.ip() {
@@ -85,7 +85,6 @@ struct Context {
 
 #[derive(Clone)]
 struct PhoneConnection {
-    url: String,
     port: u16,
     busy: Arc<AtomicBool>,
     status: Arc<Mutex<&'static str>>,
@@ -116,11 +115,7 @@ impl PhoneConnection {
                 if *delay > 0 {
                     tokio::time::sleep(Duration::from_secs(*delay)).await;
                 }
-                match tokio::time::timeout(
-                    Duration::from_secs(20),
-                    connect_phone(phone.port, &phone.url),
-                )
-                .await
+                match tokio::time::timeout(Duration::from_secs(20), connect_phone(phone.port)).await
                 {
                     Ok(Ok(())) => {
                         connected = true;
@@ -290,7 +285,7 @@ async fn adb(executable: &std::ffi::OsStr, args: &[&str]) -> Result<String, Stri
     Ok(text)
 }
 
-async fn connect_phone(port: u16, url: &str) -> Result<(), String> {
+async fn connect_phone(port: u16) -> Result<(), String> {
     let executable = crate::startup::adb_path()?;
     let target =
         std::env::var("LIQUID_DECK_ADB_TARGET").unwrap_or_else(|_| "192.168.1.101:5555".into());
@@ -310,26 +305,6 @@ async fn connect_phone(port: u16, url: &str) -> Result<(), String> {
             "input",
             "keyevent",
             "KEYCODE_WAKEUP",
-        ],
-    )
-    .await?;
-    // adb shell joins arguments into a remote shell command: quote the URL,
-    // including any percent-encoded token, rather than interpolating shell input.
-    let url = format!("'{url}'");
-    adb(
-        &executable,
-        &[
-            "-s",
-            &target,
-            "shell",
-            "am",
-            "start",
-            "-a",
-            "android.intent.action.VIEW",
-            "-n",
-            "mark.via.gp/mark.via.Shell",
-            "-d",
-            &url,
         ],
     )
     .await?;
@@ -386,10 +361,9 @@ pub fn run(config: Config) -> Result<(), String> {
             menu,
             icon: NOTIFYICONDATAW::default(),
             taskbar_created: RegisterWindowMessageW(wide("TaskbarCreated").as_ptr()),
-            url: panel_url(&config, false),
+            url: panel_url(&config),
             runtime: runtime.handle().clone(),
             phone: PhoneConnection {
-                url: panel_url(&config, true),
                 port: config.bind.port(),
                 busy: Arc::new(AtomicBool::new(false)),
                 status: Arc::new(Mutex::new("Robin")),
@@ -541,11 +515,10 @@ mod tests {
             idle_ms: 5000,
         };
         assert_eq!(
-            panel_url(&config, false),
+            panel_url(&config),
             "http://127.0.0.1:9876/?token=a%26b%20%23%C3%A9"
         );
         config.bind = "[::1]:9876".parse().unwrap();
-        assert!(panel_url(&config, false).starts_with("http://[::1]:9876/"));
-        assert!(panel_url(&config, true).starts_with("http://127.0.0.1:9876/"));
+        assert!(panel_url(&config).starts_with("http://[::1]:9876/"));
     }
 }
